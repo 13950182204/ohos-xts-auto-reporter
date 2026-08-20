@@ -15,7 +15,7 @@ import { registerBrowserUploadTool } from './upload-tool.ts'
  * 浏览器依赖：@yeesy369/dsh-browser-playwright 等三个插件（已在 web profile）。
  */
 export const name = 'ohos-xts-auto-reporter'
-export const inject = ['skills', 'browser']
+export const inject = ['skills', 'browser', 'tools']
 export { Config } from './config.ts'
 
 export function apply(ctx: Context): void {
