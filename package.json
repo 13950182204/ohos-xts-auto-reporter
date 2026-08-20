@@ -43,8 +43,10 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
     "@deepseek-ai/dsh-skill": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
+    "@yeesy369/dsh-browser": "0.5.1",
     "typescript": "^5.7.0",
     "vitest": "^2.1.0"
   },
