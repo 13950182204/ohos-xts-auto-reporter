@@ -1,0 +1,9 @@
+# ohos-xts-auto-reporter bundle patch
+#
+# 安装：dsh plugin --profile <name> add ohos-xts-auto-reporter
+# 插件加载后注册 vendored skill：openharmony-waiver-draft（豁免草稿自动填写）。
+# 浏览器操作依赖 @yeesy369/dsh-browser-playwright 提供的 browser_* 工具
+# （需先安装并重启 dsh；dsh web 需带 DISPLAY 环境以便弹出浏览器窗口）。
+- insert:
+    - id: ohos-xts-reporter
+      name: 'ohos-xts-auto-reporter'
