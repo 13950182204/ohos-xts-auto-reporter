@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@yeesy369/dsh-browser' // 触发 ctx.browser 的 Context 模块增强
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
 /** ctx.browser 的 setInputFiles 结构（由 @yeesy369/dsh-browser-playwright 的 DSH 定制补丁提供，类型面未包含） */
