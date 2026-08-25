@@ -19,9 +19,9 @@ export const Phase2Settings = z.object({
   username: z.string().role('secret'),
   password: z.string().role('secret'),
   workbookPath: z.string(),
-  selfCheckPath: z.string(),
-  reportPath: z.string(),
-  mirrorPath: z.string(),
+  selfCheckPath: z.string().default(''),
+  reportPath: z.string().default(''),
+  mirrorPath: z.string().default(''),
   contactPhone: z.string().default('13950182204'),
   contactEmail: z.string().default('102438@dnake.com'),
 })

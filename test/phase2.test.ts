@@ -74,12 +74,21 @@ describe('phase2 safety boundary', () => {
     }
   })
 
-  it('validates report, self-check, and mirror attachment paths', async () => {
+  it('derives attachments from the workbook directory and leaves mirror deferred', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    expect(logic.derivePhase2AttachmentPaths('D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony兼容性申请_第二阶段.xlsx')).toEqual({
+      selfCheckPath: 'D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx',
+      reportPath: 'D:\\ohos\\XTS6.1\\DHong\\A537\\report\\report.zip',
+      mirrorPath: '',
+    })
+  })
+
+  it('validates report and self-check paths while allowing deferred mirror upload', async () => {
     const logic = await import('../scripts/phase2_logic.mjs')
     const errors = await logic.validatePhase2Attachments({
-      selfCheckPath: '/tmp/missing.xlsx', reportPath: '/tmp/missing.zip', mirrorPath: '/tmp/missing.7z',
+      selfCheckPath: '/tmp/missing.xlsx', reportPath: '/tmp/missing.zip', mirrorPath: '',
     }, { fileExists: async () => false })
-    expect(errors).toHaveLength(3)
+    expect(errors).toHaveLength(2)
     expect(errors.join('\n')).toContain('PCS自检表路径不存在')
   })
 

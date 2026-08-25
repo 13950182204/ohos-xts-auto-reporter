@@ -1,17 +1,18 @@
-import { readPhase2Workbook, validatePhase2Attachments } from './phase2_logic.mjs';
+import { derivePhase2AttachmentPaths, readPhase2Workbook, validatePhase2Attachments } from './phase2_logic.mjs';
 
 function parseArgs(argv) {
   const value = (name) => { const index = argv.indexOf(name); return index >= 0 ? argv[index + 1] || '' : ''; };
   const workbook = value('--workbook');
   if (!workbook || workbook.startsWith('--')) throw new Error('没有提供对应的申请表格文件，已停止执行。');
-  return { workbook, selfCheckPath: value('--self-check'), reportPath: value('--report'), mirrorPath: value('--mirror') };
+  return { workbook };
 }
 
 try {
   const input = parseArgs(process.argv.slice(2));
   const workbook = input.workbook;
   const { record } = await readPhase2Workbook(workbook);
-  const attachmentErrors = await validatePhase2Attachments(input);
+  const attachments = derivePhase2AttachmentPaths(workbook);
+  const attachmentErrors = await validatePhase2Attachments(attachments);
   if (attachmentErrors.length) {
     console.log(JSON.stringify({ ok: false, errors: attachmentErrors, message: '附件预检失败。' }));
     process.exitCode = 1;
@@ -32,9 +33,10 @@ try {
       assessmentNumber: record.assessmentNumber || '',
       applicationId: record.applicationId || '',
       processingStatus: record.processingStatus,
-      selfCheckPath: input.selfCheckPath,
-      reportPath: input.reportPath,
-      mirrorPath: input.mirrorPath,
+      selfCheckPath: attachments.selfCheckPath,
+      reportPath: attachments.reportPath,
+      mirrorPath: '',
+      mirrorUploadDeferred: true,
     },
   }));
 } catch (error) {

@@ -157,6 +157,28 @@ export function toWslPath(value) {
   return windowsPath ? `/mnt/${windowsPath[1].toLowerCase()}/${windowsPath[2]}` : input;
 }
 
+export const PHASE2_SELF_CHECK_NAME = 'OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx';
+export const PHASE2_REPORT_NAME = 'report.zip';
+
+export function derivePhase2AttachmentPaths(workbookPath) {
+  const input = normalizeText(workbookPath);
+  const windows = /^([a-zA-Z]:[\\/])/.test(input);
+  if (windows) {
+    const directory = path.win32.dirname(input.replaceAll('/', '\\'));
+    return {
+      selfCheckPath: path.win32.join(directory, PHASE2_SELF_CHECK_NAME),
+      reportPath: path.win32.join(directory, 'report', PHASE2_REPORT_NAME),
+      mirrorPath: '',
+    };
+  }
+  const directory = path.dirname(toWslPath(input));
+  return {
+    selfCheckPath: path.join(directory, PHASE2_SELF_CHECK_NAME),
+    reportPath: path.join(directory, 'report', PHASE2_REPORT_NAME),
+    mirrorPath: '',
+  };
+}
+
 export function isAbsoluteLocalPath(value) {
   return path.posix.isAbsolute(toWslPath(value));
 }
@@ -193,7 +215,7 @@ export async function validatePhase2Attachments({ selfCheckPath, reportPath, mir
   const errors = [];
   await validateAttachment(errors, 'PCS自检表路径', selfCheckPath, ['.xlsx'], fileExists);
   await validateAttachment(errors, 'XTS报告路径', reportPath, ['.zip'], fileExists);
-  await validateAttachment(errors, '镜像固件路径', mirrorPath, ['.7z', '.zip'], fileExists);
+  if (normalizeText(mirrorPath)) await validateAttachment(errors, '镜像固件路径', mirrorPath, ['.7z', '.zip'], fileExists);
   return errors;
 }
 

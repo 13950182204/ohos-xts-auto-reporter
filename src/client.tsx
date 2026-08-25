@@ -36,6 +36,16 @@ function displayValue(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
+function deriveAttachmentPaths(workbookPath: string): { selfCheckPath: string; reportPath: string } {
+  const normalized = workbookPath.trim().replaceAll('/', '\\')
+  const separator = normalized.lastIndexOf('\\')
+  const directory = separator >= 0 ? normalized.slice(0, separator) : normalized
+  return {
+    selfCheckPath: directory ? `${directory}\\OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx` : '',
+    reportPath: directory ? `${directory}\\report\\report.zip` : '',
+  }
+}
+
 function inputStyle(): Record<string, string> {
   return {
     width: '100%',
@@ -71,9 +81,10 @@ export function ReporterSettingsCard({ scope }: CardProps) {
   const [username, setUsername] = useState(displayValue(initial.username))
   const [password, setPassword] = useState('')
   const [workbookPath, setWorkbookPath] = useState(displayValue(initial.workbookPath))
-  const [selfCheckPath, setSelfCheckPath] = useState(displayValue(initial.selfCheckPath))
-  const [reportPath, setReportPath] = useState(displayValue(initial.reportPath))
-  const [mirrorPath, setMirrorPath] = useState(displayValue(initial.mirrorPath))
+  const initialDerived = deriveAttachmentPaths(displayValue(initial.workbookPath))
+  const [selfCheckPath, setSelfCheckPath] = useState(initialDerived.selfCheckPath)
+  const [reportPath, setReportPath] = useState(initialDerived.reportPath)
+  const [mirrorPath] = useState('')
   const [contactPhone, setContactPhone] = useState(displayValue(initial.contactPhone) || DEFAULT_PHONE)
   const [contactEmail, setContactEmail] = useState(displayValue(initial.contactEmail) || DEFAULT_EMAIL)
   const [busy, setBusy] = useState(false)
@@ -84,9 +95,9 @@ export function ReporterSettingsCard({ scope }: CardProps) {
   useEffect(() => {
     const value = scope.getSnapshot().value ?? {}
     if (value.workbookPath !== undefined) setWorkbookPath(displayValue(value.workbookPath))
-    if (value.selfCheckPath !== undefined) setSelfCheckPath(displayValue(value.selfCheckPath))
-    if (value.reportPath !== undefined) setReportPath(displayValue(value.reportPath))
-    if (value.mirrorPath !== undefined) setMirrorPath(displayValue(value.mirrorPath))
+    const derived = deriveAttachmentPaths(displayValue(value.workbookPath))
+    setSelfCheckPath(derived.selfCheckPath)
+    setReportPath(derived.reportPath)
     if (value.contactPhone !== undefined) setContactPhone(displayValue(value.contactPhone))
     if (value.contactEmail !== undefined) setContactEmail(displayValue(value.contactEmail))
   }, [scope, snapshot.value])
@@ -120,7 +131,7 @@ export function ReporterSettingsCard({ scope }: CardProps) {
       scope.set('workbookPath', workbookPath.trim()),
       scope.set('selfCheckPath', selfCheckPath.trim()),
       scope.set('reportPath', reportPath.trim()),
-      scope.set('mirrorPath', mirrorPath.trim()),
+      scope.set('mirrorPath', ''),
       scope.set('contactPhone', contactPhone.trim() || DEFAULT_PHONE),
       scope.set('contactEmail', contactEmail.trim() || DEFAULT_EMAIL),
     ]
@@ -140,7 +151,7 @@ export function ReporterSettingsCard({ scope }: CardProps) {
     setBusy(true)
     setResult(null)
     const saved = await saveSettings()
-    if (saved) setResult(await request('preflight', 'POST', { workbookPath: workbookPath.trim(), selfCheckPath: selfCheckPath.trim(), reportPath: reportPath.trim(), mirrorPath: mirrorPath.trim() }))
+    if (saved) setResult(await request('preflight', 'POST', { workbookPath: workbookPath.trim() }))
     setBusy(false)
   }
 
@@ -148,7 +159,7 @@ export function ReporterSettingsCard({ scope }: CardProps) {
     setBusy(true)
     setResult(null)
     const saved = await saveSettings()
-    if (saved) setResult(await request('save', 'POST', { workbookPath: workbookPath.trim(), selfCheckPath: selfCheckPath.trim(), reportPath: reportPath.trim(), mirrorPath: mirrorPath.trim() }))
+    if (saved) setResult(await request('save', 'POST', { workbookPath: workbookPath.trim() }))
     setBusy(false)
   }
 
@@ -162,15 +173,15 @@ export function ReporterSettingsCard({ scope }: CardProps) {
   createElement('label', { style: labelStyle() }, '账号', createElement('input', { type: 'text', autoComplete: 'username', value: username, onChange: onText(setUsername), disabled: busy, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '密码', createElement('input', { type: 'password', autoComplete: 'current-password', value: password, placeholder: '留空表示使用已保存密码或环境变量', onChange: onText(setPassword), disabled: busy, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '第二阶段 Excel 文件', createElement('input', { type: 'text', value: workbookPath, placeholder: '绝对路径，例如 D:\\ohos\\XTS6.1\\OpenHarmony兼容性申请_第二阶段.xlsx', onChange: onText(setWorkbookPath), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, 'PCS 自检表', createElement('input', { type: 'text', value: selfCheckPath, placeholder: 'D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx', onChange: onText(setSelfCheckPath), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, 'XTS 报告 ZIP', createElement('input', { type: 'text', value: reportPath, placeholder: 'D:\\ohos\\XTS6.1\\DHong\\A537\\report\\report.zip', onChange: onText(setReportPath), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, '镜像固件文件名/路径', createElement('input', { type: 'text', value: mirrorPath, placeholder: 'image_and_guide76B_20260824.7z（按平台镜像库文件名选择）', onChange: onText(setMirrorPath), disabled: busy, style: inputStyle() })),
+  createElement('label', { style: labelStyle() }, 'PCS 自检表（自动获取）', createElement('input', { type: 'text', value: selfCheckPath, readOnly: true, disabled: busy, style: inputStyle() })),
+  createElement('label', { style: labelStyle() }, 'XTS 报告 ZIP（自动获取）', createElement('input', { type: 'text', value: reportPath, readOnly: true, disabled: busy, style: inputStyle() })),
+  createElement('label', { style: labelStyle() }, '镜像固件路径（预留）', createElement('input', { type: 'text', value: mirrorPath, readOnly: true, placeholder: '预留：未来固件自动上传，当前留空', disabled: true, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '企业联系电话', createElement('input', { type: 'tel', value: contactPhone, onChange: onText(setContactPhone), disabled: busy, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '企业邮箱', createElement('input', { type: 'email', value: contactEmail, onChange: onText(setContactEmail), disabled: busy, style: inputStyle() })),
   createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' } },
     createElement('button', { type: 'button', onClick: () => { void preflight() }, disabled: busy || !writable, style: buttonStyle(false) }, '预检'),
     createElement('button', { type: 'button', onClick: () => { void saveDraft() }, disabled: busy || !writable, style: buttonStyle(true) }, busy ? '处理中…' : '保存第二阶段草稿')),
-  createElement('p', { style: { fontSize: '12px', lineHeight: 1.5, opacity: 0.75, margin: '10px 0 0' } }, '保存时会从软件定义进入报告上传阶段，以绑定 XTS报告、PCS自检表和镜像；不会进入样机寄送或提交申请。最终提交需由用户在平台页面人工完成。'),
+  createElement('p', { style: { fontSize: '12px', lineHeight: 1.5, opacity: 0.75, margin: '10px 0 0' } }, 'Excel 路径确定后自动获取同目录 PCS 自检表和 report\\report.zip；镜像上传暂未启用。不会进入样机寄送或提交申请。'),
   result ? createElement('div', { role: 'status', style: { marginTop: '10px', color: result.ok ? '#15803d' : '#b91c1c', whiteSpace: 'pre-wrap', fontSize: '13px' } }, result.ok ? (result.message || '操作成功。') : [result.message, ...(result.errors ?? [])].filter(Boolean).join('\n')) : null,
   displayState !== undefined && (displayState.phase !== 'idle' || displayState.finishedAt) ? createElement('div', { role: 'status', style: { marginTop: '8px', fontSize: '12px', lineHeight: 1.6 } },
     `Host 状态：${String(displayState.phase)}${displayState.message ? `，${String(displayState.message)}` : ''}`,

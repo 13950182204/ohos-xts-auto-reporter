@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { dirname, join } from 'node:path'
+import { dirname, join, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
@@ -61,11 +61,16 @@ function workbookPath(body: Record<string, unknown>, settings: Phase2SettingsVal
   return text(body.workbookPath) || text(settings.workbookPath)
 }
 
-function attachmentSettings(body: Record<string, unknown>, settings: Phase2SettingsValue): Record<string, string> {
+function attachmentSettings(workbook: string): Record<string, string> {
+  const raw = workbook.trim()
+  const isWindows = /^[a-zA-Z]:[\\/]/.test(raw)
+  const normalized = raw.replaceAll('/', '\\')
+  const directory = isWindows ? win32.dirname(normalized) : dirname(raw.replaceAll('\\', '/'))
+  const separator = isWindows ? '\\' : '/'
   return {
-    selfCheckPath: text(body.selfCheckPath) || text(settings.selfCheckPath),
-    reportPath: text(body.reportPath) || text(settings.reportPath),
-    mirrorPath: text(body.mirrorPath) || text(settings.mirrorPath),
+    selfCheckPath: `${directory}${separator}OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx`,
+    reportPath: `${directory}${separator}report${separator}report.zip`,
+    mirrorPath: '',
   }
 }
 
@@ -127,8 +132,7 @@ async function handlePreflight(req: IncomingMessage, res: ServerResponse, settin
     const path = workbookPath(body, value)
     if (!path) return sendJson(res, 400, { ok: false, message: '没有提供对应的申请表格文件，已停止执行。' })
     updateState({ phase: 'preflight', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: undefined, errors: undefined, summary: undefined })
-    const attachments = attachmentSettings(body, value)
-    const result = await runScript('preflight_phase2.mjs', ['--workbook', path, '--self-check', attachments.selfCheckPath, '--report', attachments.reportPath, '--mirror', attachments.mirrorPath], {}, [])
+    const result = await runScript('preflight_phase2.mjs', ['--workbook', path], {}, [])
     const parsed = parsePreflight(result.output)
     const response = { ...parsed, ok: result.code === 0 && parsed.ok, output: result.code === 0 ? undefined : parsed.message }
     updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: response.ok, message: response.message, errors: response.errors, summary: response.summary })
@@ -151,7 +155,7 @@ async function handleSave(req: IncomingMessage, res: ServerResponse, settings: P
     const password = text(value.password) || text(process.env.OH_PASSWORD)
     if (!username || !password) return sendJson(res, 400, { ok: false, message: '没有填写对应账号密码，已停止执行。' })
     if (!path) return sendJson(res, 400, { ok: false, message: '没有提供对应的申请表格文件，已停止执行。' })
-    const attachments = attachmentSettings(body, value)
+    const attachments = attachmentSettings(path)
     updateState({ phase: 'saving', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: '正在保存第二阶段草稿。', errors: undefined, summary: undefined })
     const result = await runScript('fill_phase2.mjs', ['--phase2', '--workbook', path, '--save'], {
       OH_USERNAME: username,
@@ -160,7 +164,7 @@ async function handleSave(req: IncomingMessage, res: ServerResponse, settings: P
       OH_CONTACT_EMAIL: text(value.contactEmail) || '102438@dnake.com',
       OH_SELF_CHECK_PATH: attachments.selfCheckPath,
       OH_REPORT_PATH: attachments.reportPath,
-      OH_MIRROR_PATH: attachments.mirrorPath,
+      OH_MIRROR_PATH: '',
     }, [username, password])
     const ok = result.code === 0
     const parsed = parseSave(result.output)
@@ -195,7 +199,7 @@ export function registerPhase2Settings(ctx: Context, config: Phase2SettingsValue
       workbookPath: text(config.workbookPath),
       selfCheckPath: text(config.selfCheckPath),
       reportPath: text(config.reportPath),
-      mirrorPath: text(config.mirrorPath),
+      mirrorPath: '',
       contactPhone: text(config.contactPhone) || '13950182204',
       contactEmail: text(config.contactEmail) || '102438@dnake.com',
     },

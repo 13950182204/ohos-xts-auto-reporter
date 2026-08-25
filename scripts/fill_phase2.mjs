@@ -6,6 +6,7 @@ import {
   assertOnlySafeSaveLabels,
   encodeVersionId,
   expectedSoftwareValues,
+  derivePhase2AttachmentPaths,
   isAssessmentNumber,
   normalizeComparable,
   normalizeText,
@@ -516,9 +517,9 @@ async function chooseMirrorFile(page, mirrorPath) {
 async function savePhase2Attachments(page, applicationId, record) {
   const selfCheckPath = process.env.OH_SELF_CHECK_PATH;
   const reportPath = process.env.OH_REPORT_PATH;
-  const mirrorPath = process.env.OH_MIRROR_PATH;
-  if (!selfCheckPath || !reportPath || !mirrorPath) {
-    throw new ApplicationError('PHASE2_ATTACHMENTS_MISSING', '缺少自检表、报告或镜像路径，已停止保存。');
+  const mirrorPath = process.env.OH_MIRROR_PATH || '';
+  if (!selfCheckPath || !reportPath) {
+    throw new ApplicationError('PHASE2_ATTACHMENTS_MISSING', '缺少自检表或报告路径，已停止保存。');
   }
   let relations = await platformRequest(page, `/certification/getCertificationReportRel?id=${encodeURIComponent(applicationId)}`, { method: 'GET' });
   let relation = Array.isArray(relations) ? relations[0] : null;
@@ -541,16 +542,18 @@ async function savePhase2Attachments(page, applicationId, record) {
     method: 'POST',
     data: [{ id: relation.id, xtsFileId: xts.id, pcsFileId: pcs.id }],
   });
-  const mirror = await chooseMirrorFile(page, mirrorPath);
-  await platformRequest(page, '/certification/saveReport', {
-    method: 'POST',
-    data: { isSave: true, id: applicationId, mirrorFileId: mirror.id, testReportFileId: '' },
-  });
+  const mirror = mirrorPath ? await chooseMirrorFile(page, mirrorPath) : null;
+  if (mirror) {
+    await platformRequest(page, '/certification/saveReport', {
+      method: 'POST',
+      data: { isSave: true, id: applicationId, mirrorFileId: mirror.id, testReportFileId: '' },
+    });
+  }
   return {
     report: { fileName: xts.fileName, id: xts.id },
     xts: { fileName: xts.fileName, id: xts.id },
     pcs: { fileName: pcs.fileName, id: pcs.id },
-    mirror: { fileName: mirror.fileName, id: mirror.id },
+    mirror: mirror ? { fileName: mirror.fileName, id: mirror.id } : undefined,
   };
 }
 
@@ -568,7 +571,7 @@ async function phase2AttachmentDifferences(page, applicationId, record) {
   if (!relation || normalizeText(relation.pcsFileName) !== expectedSelfCheck) {
     differences.push({ field: 'PCS自检表', expected: expectedSelfCheck, actual: relation?.pcsFileName || '未上传' });
   }
-  if (normalizeText(current.mirrorFileName) !== expectedMirror) {
+  if (expectedMirror && normalizeText(current.mirrorFileName) !== expectedMirror) {
     differences.push({ field: '镜像固件', expected: expectedMirror, actual: current.mirrorFileName || '未选择' });
   }
   return differences;
@@ -852,6 +855,10 @@ async function main() {
     process.exitCode = 2;
     return;
   }
+  const derivedAttachments = derivePhase2AttachmentPaths(options.workbook);
+  process.env.OH_SELF_CHECK_PATH = derivedAttachments.selfCheckPath;
+  process.env.OH_REPORT_PATH = derivedAttachments.reportPath;
+  process.env.OH_MIRROR_PATH = '';
   const artifacts = artifactDirectory(options.artifacts, input.sourcePath);
   await fs.mkdir(artifacts, { recursive: true });
   let browser;
@@ -874,8 +881,8 @@ async function main() {
           assessmentNumber: result.assessmentNumber,
           status: assessmentNumberReady ? '第二阶段已保存' : '第二阶段已保存，待编号回写',
           notes: assessmentNumberReady
-            ? (result.status === 'saved' ? '产品定义、软件定义、XTS报告、PCS自检表和镜像选择已保存并回读校验。' : '平台数据与工作簿一致，未重复保存。')
-            : '产品定义、软件定义、XTS报告、PCS自检表和镜像选择已保存并回读校验，平台尚未返回测评编号。',
+            ? (result.status === 'saved' ? '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验；镜像上传暂未启用。' : '平台数据与工作簿一致，未重复保存。')
+            : '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验；镜像上传暂未启用。',
         });
       }
     } catch (error) {
