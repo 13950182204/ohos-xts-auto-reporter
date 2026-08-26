@@ -60,8 +60,9 @@ describe('phase2 safety boundary', () => {
     expect(source).toContain('PHASE2_RESULT_JSON=')
     expect(client).toContain('申请标识')
     expect(client).toContain('测评编号')
-    expect(client).toContain('PCS 自检表')
-    expect(client).toContain('XTS 报告 ZIP')
+    expect(client).not.toContain('PCS 自检表（自动获取）')
+    expect(client).not.toContain('XTS 报告 ZIP（自动获取）')
+    expect(client).toContain('镜像固件路径（预留）')
   })
 
   it('rejects a missing workbook before any browser action', async () => {
