@@ -211,7 +211,14 @@ async function platformRequest(page, endpoint, options = {}) {
   const token = await page.evaluate(() => localStorage.getItem('Token') || '');
   const headers = { language: 'zh', ...(options.headers || {}) };
   if (token) headers['access-token'] = token;
-  const response = await page.context().request.fetch(platformUrl(page, endpoint), { ...options, headers });
+  const requestOptions = {
+    ...options,
+    headers,
+    // RK3568 report archives can exceed 250 MB; the default 30s request limit
+    // is too short for the platform's multipart processing.
+    timeout: options.timeout ?? (options.multipart ? 15 * 60 * 1000 : 30_000),
+  };
+  const response = await page.context().request.fetch(platformUrl(page, endpoint), requestOptions);
   const payload = await response.json().catch(() => null);
   if (!response.ok() || payload?.code !== 200) {
     const message = payload?.msg || `平台接口失败: ${endpoint}`;
