@@ -8,6 +8,11 @@ import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import { PHASE2_SETTINGS_NAMESPACE, Phase2Settings, type Phase2Settings as Phase2SettingsValue } from './config.ts'
 
 type Phase2SettingsScope = SettingsScope<Phase2SettingsValue>
+type ProgressState = {
+  percent: number
+  stage: string
+  detail?: string
+}
 type RunState = {
   phase: 'idle' | 'preflight' | 'saving'
   startedAt?: string
@@ -16,6 +21,7 @@ type RunState = {
   message?: string
   errors?: string[]
   summary?: Record<string, unknown>
+  progress?: ProgressState
 }
 
 const state: RunState = { phase: 'idle' }
@@ -82,7 +88,32 @@ function updateState(patch: Partial<RunState>): void {
   Object.assign(state, patch)
 }
 
-function runScript(script: string, args: string[], env: NodeJS.ProcessEnv, secrets: string[]): Promise<{ code: number; output: string }> {
+function parseProgressLine(line: string): ProgressState | undefined {
+  if (!line.startsWith('PHASE2_PROGRESS=')) return undefined
+  try {
+    const parsed: unknown = JSON.parse(line.slice('PHASE2_PROGRESS='.length))
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+    const value = parsed as Record<string, unknown>
+    const rawPercent = Number(value.percent)
+    const stage = text(value.stage)
+    if (!Number.isFinite(rawPercent) || !stage) return undefined
+    return {
+      percent: Math.max(0, Math.min(100, Math.round(rawPercent))),
+      stage,
+      detail: text(value.detail) || undefined,
+    }
+  } catch {
+    return undefined
+  }
+}
+
+function runScript(
+  script: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  secrets: string[],
+  onProgress?: (progress: ProgressState) => void,
+): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
     const child = execFile(process.execPath, [join(scriptsDirectory(), script), ...args], {
       env: { ...process.env, ...env },
@@ -91,6 +122,16 @@ function runScript(script: string, args: string[], env: NodeJS.ProcessEnv, secre
       const code = typeof error?.code === 'number' ? error.code : error ? 1 : 0
       const output = redact(`${stdout}${stderr ? `\n${stderr}` : ''}`.trim(), secrets)
       resolve({ code, output })
+    })
+    let progressBuffer = ''
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      progressBuffer += chunk.toString()
+      const lines = progressBuffer.split(/\r?\n/)
+      progressBuffer = lines.pop() || ''
+      for (const line of lines) {
+        const progress = parseProgressLine(line)
+        if (progress) onProgress?.(progress)
+      }
     })
     const timeout = setTimeout(() => child.kill('SIGTERM'), 15 * 60 * 1000)
     child.once('close', () => clearTimeout(timeout))
@@ -143,15 +184,17 @@ async function handlePreflight(req: IncomingMessage, res: ServerResponse, settin
     const value = currentSettings(settings)
     const path = workbookPath(body, value)
     if (!path) return sendJson(res, 400, { ok: false, message: '没有提供对应的申请表格文件，已停止执行。' })
-    updateState({ phase: 'preflight', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: undefined, errors: undefined, summary: undefined })
-    const result = await runScript('preflight_phase2.mjs', ['--workbook', path], {}, [])
+    updateState({ phase: 'preflight', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: '正在读取工作簿。', errors: undefined, summary: undefined, progress: { percent: 5, stage: '读取工作簿', detail: '正在检查设备类型和必填字段。' } })
+    const result = await runScript('preflight_phase2.mjs', ['--workbook', path], {}, [], (progress) => {
+      updateState({ progress, message: progress.detail || progress.stage })
+    })
     const parsed = parsePreflight(result.output)
     const response = { ...parsed, ok: result.code === 0 && parsed.ok, output: result.code === 0 ? undefined : parsed.message }
-    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: response.ok, message: response.message, errors: response.errors, summary: response.summary })
+    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: response.ok, message: response.message, errors: response.errors, summary: response.summary, progress: { percent: 100, stage: response.ok ? '预检完成' : '预检失败', detail: response.ok ? '工作簿和附件路径可以使用。' : response.message } })
     sendJson(res, response.ok ? 200 : 422, response)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: false, message, errors: [message] })
+    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: false, message, errors: [message], progress: { percent: 100, stage: '预检失败', detail: message } })
     sendJson(res, 400, { ok: false, message, errors: [message] })
   }
 }
@@ -168,7 +211,7 @@ async function handleSave(req: IncomingMessage, res: ServerResponse, settings: P
     if (!username || !password) return sendJson(res, 400, { ok: false, message: '没有填写对应账号密码，已停止执行。' })
     if (!path) return sendJson(res, 400, { ok: false, message: '没有提供对应的申请表格文件，已停止执行。' })
     const attachments = attachmentSettings(path)
-    updateState({ phase: 'saving', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: '正在保存第二阶段草稿。', errors: undefined, summary: undefined })
+    updateState({ phase: 'saving', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: '正在启动浏览器流程。', errors: undefined, summary: undefined, progress: { percent: 2, stage: '启动流程', detail: '正在登录兼容性测评平台。' } })
     const result = await runScript('fill_phase2.mjs', ['--phase2', '--workbook', path, '--save'], {
       OH_USERNAME: username,
       OH_PASSWORD: password,
@@ -177,15 +220,17 @@ async function handleSave(req: IncomingMessage, res: ServerResponse, settings: P
       OH_SELF_CHECK_PATH: attachments.selfCheckPath,
       OH_REPORT_PATH: attachments.reportPath,
       OH_MIRROR_PATH: '',
-    }, [username, password])
+    }, [username, password], (progress) => {
+      updateState({ progress, message: progress.detail || progress.stage })
+    })
     const ok = result.code === 0
     const parsed = parseSave(result.output)
     const message = ok ? '第二阶段草稿已保存，尚未提交。' : parsed.failureMessage || result.output || '第二阶段保存失败。'
-    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok, message, errors: ok ? undefined : [message], summary: parsed.summary })
+    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok, message, errors: ok ? undefined : [message], summary: parsed.summary, progress: { percent: 100, stage: ok ? '已完成' : '已停止', detail: message } })
     sendJson(res, ok ? 200 : 422, { ok, message, summary: parsed.summary, output: result.output || undefined })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: false, message, errors: [message] })
+    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: false, message, errors: [message], progress: { percent: 100, stage: '已停止', detail: message } })
     sendJson(res, 400, { ok: false, message, errors: [message] })
   }
 }

@@ -23,6 +23,10 @@ const REPORT_RELATION_MAX_WAIT_MS = 2 * 60 * 1000;
 const REPORT_RELATION_POLL_INTERVAL_MS = 1000;
 const REPORT_RELATION_INITIALIZE_RETRY_MS = 30 * 1000;
 
+function reportProgress(percent, stage, detail = '') {
+  console.log(`PHASE2_PROGRESS=${JSON.stringify({ percent, stage, detail })}`);
+}
+
 class ApplicationError extends Error {
   constructor(code, message, { global = false } = {}) {
     super(message);
@@ -397,6 +401,7 @@ async function uploadAppearanceFile(page, filePath) {
 }
 
 async function saveProductDefinition(page, applicationId, record) {
+  reportProgress(35, '保存产品定义', '正在保存产品信息和外观图。');
   const appearanceIds = [];
   for (const filePath of record.appearancePaths) {
     appearanceIds.push(await uploadAppearanceFile(page, filePath));
@@ -548,13 +553,21 @@ async function savePhase2Attachments(page, applicationId, record) {
 
   let relation = await getReportRelation();
   if (!relation) {
+    reportProgress(62, '等待报告关联', '正在等待平台生成第4步设备报告行。');
     await initializeReportRelation();
     const deadline = Date.now() + REPORT_RELATION_MAX_WAIT_MS;
     let nextInitializeAt = Date.now() + REPORT_RELATION_INITIALIZE_RETRY_MS;
+    let nextProgressAt = Date.now() + 5000;
     while (!relation && Date.now() < deadline) {
       await page.waitForTimeout(REPORT_RELATION_POLL_INTERVAL_MS);
       relation = await getReportRelation();
+      if (!relation && Date.now() >= nextProgressAt) {
+        const elapsed = Math.round((REPORT_RELATION_MAX_WAIT_MS - (deadline - Date.now())) / 1000);
+        reportProgress(62, '等待报告关联', `平台仍在生成报告行，已等待 ${elapsed} 秒。`);
+        nextProgressAt = Date.now() + 5000;
+      }
       if (!relation && Date.now() >= nextInitializeAt) {
+        reportProgress(63, '初始化报告关联', '正在重试第4步草稿初始化。');
         await initializeReportRelation();
         nextInitializeAt = Date.now() + REPORT_RELATION_INITIALIZE_RETRY_MS;
       }
@@ -566,8 +579,12 @@ async function savePhase2Attachments(page, applicationId, record) {
       '平台第4步设备报告关联在 2 分钟内仍未生成，未开始上传 PCS 自检表或 XTS 报告；请稍后重试。',
     );
   }
+  reportProgress(70, '报告关联已就绪', '开始上传 XTS 报告和 PCS 自检表。');
+  reportProgress(72, '上传 XTS 报告', '正在处理 report.zip，文件较大时可能需要几分钟。');
   const xts = await uploadTestReportFile(page, reportPath, true, record.systemType);
+  reportProgress(84, '上传 PCS 自检表', '正在上传自检表文件。');
   const pcs = await uploadTestReportFile(page, selfCheckPath, false, record.systemType);
+  reportProgress(92, '保存附件关联', '正在把 XTS 报告和 PCS 自检表写入申请。');
   await platformRequest(page, `/certification/saveTestReport?certificationId=${encodeURIComponent(applicationId)}&isSave=true`, {
     method: 'POST',
     data: [{ id: relation.id, xtsFileId: xts.id, pcsFileId: pcs.id }],
@@ -579,6 +596,7 @@ async function savePhase2Attachments(page, applicationId, record) {
       data: { isSave: true, id: applicationId, mirrorFileId: mirror.id, testReportFileId: '' },
     });
   }
+  reportProgress(97, '回读附件结果', '正在核对平台返回的文件名和关联标识。');
   return {
     report: { fileName: xts.fileName, id: xts.id },
     xts: { fileName: xts.fileName, id: xts.id },
@@ -795,6 +813,7 @@ async function applicationIdForRecord(page, artifacts, record, mode, workbookPat
 }
 
 async function processRecord(page, artifacts, record, mode, workbookPath) {
+  reportProgress(10, '读取申请工作簿', `正在处理${record.name || '当前设备'}。`);
   const applicationId = await applicationIdForRecord(page, artifacts, record, mode, workbookPath);
   const resolved = await resolveRecordOptions(page, record);
   if (!applicationId) {
@@ -806,6 +825,7 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
     await page.waitForTimeout(800);
   }
   let current = await getApplication(page, applicationId);
+  reportProgress(25, '读取平台申请', '正在核对现有申请状态。');
   assertNoPcidJsonRequirement(current, resolved);
   const productAlreadySaved = hasProductData(current);
   if (productAlreadySaved) {
@@ -837,6 +857,7 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
       return { assessmentNumber: current.certificationNumber || record.assessmentNumber, status: 'skipped', applicationId, action: 'none' };
     }
     if (Number(current.currentStep) < 4) {
+      reportProgress(55, '保存软件定义', '正在保存软件版本、补丁和 PCID.sc。');
       await saveSoftwareStep(page, applicationId, resolved, { advanceToReport: true });
     }
     const attachments = await saveAndVerifyPhase2Attachments(page, applicationId, resolved);
@@ -847,6 +868,7 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
   }
 
   // The platform creates the report relation only when the software definition advances to report upload.
+  reportProgress(55, '保存软件定义', '正在保存软件版本、补丁和 PCID.sc。');
   await saveSoftwareStep(page, applicationId, resolved, { advanceToReport: true });
   const attachments = await saveAndVerifyPhase2Attachments(page, applicationId, resolved);
   current = await getApplication(page, applicationId);
@@ -874,6 +896,7 @@ async function main() {
   }
   let input;
   try {
+    reportProgress(5, '读取申请工作簿', '正在读取第二阶段 Excel。');
     input = await readPhase2Workbook(options.workbook);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -899,12 +922,15 @@ async function main() {
     const context = await browser.newContext();
     const page = await context.newPage();
     page.setDefaultTimeout(15_000);
+    reportProgress(15, '登录平台', '正在登录兼容性测评平台。');
     await signIn(page, artifacts, process.env.OH_USERNAME, process.env.OH_PASSWORD);
+    reportProgress(20, '登录成功', '正在进入兼容性申请流程。');
     const record = input.record;
     try {
       const result = await processRecord(page, artifacts, record, options.mode, input.sourcePath);
       results.push(result);
       if (options.mode === 'save' && ['saved', 'skipped'].includes(result.status)) {
+        reportProgress(100, '处理完成', '第二阶段草稿和附件已保存并完成回读。');
         const assessmentNumberReady = isAssessmentNumber(result.assessmentNumber);
         await writeWorkbookState(input.sourcePath, {
           applicationId: result.applicationId,

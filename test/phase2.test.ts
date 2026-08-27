@@ -98,6 +98,14 @@ describe('phase2 safety boundary', () => {
     expect(source).toContain('parsed.failureMessage || result.output')
   })
 
+  it('exposes a labelled progress bar in the DSH settings card', () => {
+    const source = readFileSync(join(process.cwd(), 'src', 'client.tsx'), 'utf8')
+    expect(source).toContain("role: 'progressbar'")
+    expect(source).toContain("'aria-valuenow'")
+    expect(source).toContain('XTS 报告上传进度')
+    expect(source).toContain('progressPercent')
+  })
+
   it('validates report and self-check paths while allowing deferred mirror upload', async () => {
     const logic = await import('../scripts/phase2_logic.mjs')
     const errors = await logic.validatePhase2Attachments({

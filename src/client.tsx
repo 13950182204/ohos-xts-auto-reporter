@@ -104,6 +104,12 @@ export function ReporterSettingsCard({ scope }: CardProps) {
     ? { ...(summary ?? { phase: 'idle' }), finishedAt: new Date().toISOString(), ok: result.ok, message: result.message }
     : summary
   const operation = (result?.summary ?? summary?.summary) as Record<string, unknown> | undefined
+  const progress = (displayState?.progress ?? summary?.progress) as Record<string, unknown> | undefined
+  const progressPercent = Number.isFinite(Number(progress?.percent))
+    ? Math.max(0, Math.min(100, Number(progress?.percent)))
+    : undefined
+  const progressStage = displayValue(progress?.stage)
+  const progressDetail = displayValue(progress?.detail)
   const results = Array.isArray(operation?.results) ? operation.results as Array<Record<string, unknown>> : []
   const firstResult = results[0]
   const attachments = firstResult?.attachments as Record<string, Record<string, unknown>> | undefined
@@ -155,6 +161,9 @@ export function ReporterSettingsCard({ scope }: CardProps) {
     alignItems: 'start',
   }
   const fullWidthStyle: Record<string, string> = { ...labelStyle(), gridColumn: '1 / -1' }
+  const showProgress = progressPercent !== undefined && (
+    busy || displayState?.phase !== 'idle' || Boolean(displayState?.finishedAt) || Boolean(result)
+  )
   return createElement('section', {
     style: {
       padding: '16px',
@@ -179,6 +188,20 @@ export function ReporterSettingsCard({ scope }: CardProps) {
     createElement('button', { type: 'button', onClick: () => { void preflight() }, disabled: busy || !writable, style: buttonStyle(false) }, '预检'),
     createElement('button', { type: 'button', onClick: () => { void saveDraft() }, disabled: busy || !writable, style: buttonStyle(true) }, busy ? '处理中…' : '保存第二阶段草稿')),
   createElement('p', { style: { fontSize: '12px', lineHeight: 1.5, opacity: 0.68, margin: '12px 0 0' } }, '镜像上传暂未启用；不会进入样机寄送或提交申请。'),
+  showProgress ? createElement('div', { style: { marginTop: '14px' } },
+    createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '6px', fontSize: '12px' } },
+      createElement('span', null, progressStage || (busy ? '处理中' : '处理状态')),
+      createElement('strong', null, `${Math.round(progressPercent)}%`)),
+    createElement('div', {
+      role: 'progressbar',
+      'aria-label': 'XTS 报告上传进度',
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+      'aria-valuenow': Math.round(progressPercent),
+      style: { height: '8px', overflow: 'hidden', borderRadius: '4px', background: 'var(--dsw-color-fill-secondary, rgba(127, 127, 127, 0.22))' },
+    }, createElement('div', { style: { width: `${progressPercent}%`, height: '100%', borderRadius: 'inherit', background: result?.ok === false ? 'var(--dsw-color-danger, #dc2626)' : 'var(--dsw-color-primary, #2563eb)', transition: 'width 180ms ease-out' } })),
+    progressDetail ? createElement('div', { style: { marginTop: '6px', color: 'var(--dsw-color-text-secondary, inherit)', fontSize: '12px', lineHeight: 1.5 } }, progressDetail) : null,
+  ) : null,
   result ? createElement('div', { role: 'status', style: { marginTop: '10px', color: result.ok ? '#15803d' : '#b91c1c', whiteSpace: 'pre-wrap', fontSize: '13px' } }, result.ok ? (result.message || '操作成功。') : [result.message, ...(result.errors ?? [])].filter(Boolean).join('\n')) : null,
   displayState !== undefined && (displayState.phase !== 'idle' || displayState.finishedAt) ? createElement('div', { role: 'status', style: { marginTop: '8px', fontSize: '12px', lineHeight: 1.6 } },
     `Host 状态：${String(displayState.phase)}${displayState.message ? `，${String(displayState.message)}` : ''}`,
