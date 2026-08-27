@@ -120,6 +120,7 @@ describe('phase2 safety boundary', () => {
     expect(source).toContain("const result = { assessmentNumber: input.record.assessmentNumber || '', status: 'retryable', code, message }")
     expect(source).toContain('WORKBOOK_NOT_WRITABLE')
     expect(source).toContain('请先关闭 WPS/Excel')
+    expect(source).toContain("['blocked', 'retryable'].includes(result.status)")
   })
 
   it('reduces structured save failures to their actionable platform message', () => {

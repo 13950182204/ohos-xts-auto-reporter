@@ -1018,7 +1018,7 @@ async function main() {
     console.log(`第二阶段处理完成。Artifacts: ${artifacts}`);
     for (const result of results) console.log(`${result.assessmentNumber || '未生成测评编号'}: ${result.status}`);
     console.log(`PHASE2_RESULT_JSON=${JSON.stringify({ results })}`);
-    if (results.some((result) => result.status === 'blocked')) {
+    if (results.some((result) => ['blocked', 'retryable'].includes(result.status))) {
       process.exitCode = 1;
     }
   } catch (error) {
