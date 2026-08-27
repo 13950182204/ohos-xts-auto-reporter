@@ -11,6 +11,7 @@ import {
   normalizeComparable,
   normalizeText,
   readPhase2Workbook,
+  ensureWorkbookWritable,
   toWslPath,
   writeWorkbookState,
 } from './phase2_logic.mjs';
@@ -28,10 +29,12 @@ function reportProgress(percent, stage, detail = '') {
 }
 
 class ApplicationError extends Error {
-  constructor(code, message, { global = false } = {}) {
+  constructor(code, message, { global = false, retryable = false, details = undefined } = {}) {
     super(message);
     this.code = code;
     this.global = global;
+    this.retryable = retryable;
+    this.details = details;
   }
 }
 
@@ -275,6 +278,37 @@ async function findApplication(page, assessmentNumber) {
 
 async function getApplication(page, applicationId) {
   return platformRequest(page, `/certification/getCertificationInfoById?id=${encodeURIComponent(applicationId)}`, { method: 'GET' });
+}
+
+function reportStage(current) {
+  const value = Number(current?.currentStep);
+  return Number.isFinite(value) ? value : null;
+}
+
+async function waitForReportStage(page, applicationId) {
+  const deadline = Date.now() + REPORT_RELATION_MAX_WAIT_MS;
+  let current = await getApplication(page, applicationId);
+  let step = reportStage(current);
+  let nextProgressAt = Date.now() + 5000;
+  while (step === null || step < 4) {
+    if (Date.now() >= deadline) {
+      const stepLabel = step === null ? '未知' : String(step);
+      throw new ApplicationError(
+        'REPORT_STAGE_NOT_READY',
+        `平台在 2 分钟内未进入第4步报告上传阶段（当前第${stepLabel}步），未开始上传 PCS 自检表或 XTS 报告；可稍后重试同一申请。`,
+        { retryable: true, details: { applicationId, currentStep: step } },
+      );
+    }
+    if (Date.now() >= nextProgressAt) {
+      const stepLabel = step === null ? '未知' : String(step);
+      reportProgress(60, '等待报告上传阶段', `平台当前第${stepLabel}步，正在等待第4步就绪。`);
+      nextProgressAt = Date.now() + 5000;
+    }
+    await page.waitForTimeout(REPORT_RELATION_POLL_INTERVAL_MS);
+    current = await getApplication(page, applicationId);
+    step = reportStage(current);
+  }
+  return current;
 }
 
 async function contactInputForLabel(page, label) {
@@ -538,6 +572,8 @@ async function savePhase2Attachments(page, applicationId, record) {
   if (!selfCheckPath || !reportPath) {
     throw new ApplicationError('PHASE2_ATTACHMENTS_MISSING', '缺少自检表或报告路径，已停止保存。');
   }
+  reportProgress(60, '核对报告上传阶段', '正在确认平台已进入第4步报告上传阶段。');
+  await waitForReportStage(page, applicationId);
   const getReportRelation = async () => {
     const relations = await platformRequest(page, `/certification/getCertificationReportRel?id=${encodeURIComponent(applicationId)}`, { method: 'GET' });
     return Array.isArray(relations) ? relations[0] : null;
@@ -576,7 +612,8 @@ async function savePhase2Attachments(page, applicationId, record) {
   if (!relation?.id) {
     throw new ApplicationError(
       'REPORT_RELATION_MISSING',
-      '平台第4步设备报告关联在 2 分钟内仍未生成，未开始上传 PCS 自检表或 XTS 报告；请稍后重试。',
+      '平台第4步设备报告关联在 2 分钟内仍未生成，未开始上传 PCS 自检表或 XTS 报告；可稍后重试同一申请。',
+      { retryable: true, details: { applicationId, currentStep: 4 } },
     );
   }
   reportProgress(70, '报告关联已就绪', '开始上传 XTS 报告和 PCS 自检表。');
@@ -914,6 +951,28 @@ async function main() {
   process.env.OH_MIRROR_PATH = '';
   const artifacts = artifactDirectory(options.artifacts, input.sourcePath);
   await fs.mkdir(artifacts, { recursive: true });
+  if (options.mode === 'save') {
+    try {
+      reportProgress(8, '检查工作簿', '正在确认工作簿可写；请先关闭 WPS/Excel 中打开的文件。');
+      await ensureWorkbookWritable(options.workbook, {
+        onRetry: ({ attempt, lockPresent }) => {
+          reportProgress(8, '等待工作簿可写', lockPresent
+            ? `检测到 WPS/Excel 占用，已等待 ${attempt} 秒。`
+            : `工作簿暂时不可写，已等待 ${attempt} 秒。`);
+        },
+      });
+    } catch (error) {
+      const code = error?.code || 'WORKBOOK_NOT_WRITABLE';
+      const message = error instanceof Error ? error.message : String(error);
+      const result = { assessmentNumber: input.record.assessmentNumber || '', status: 'retryable', code, message };
+      await writeResult(artifacts, { mode: options.mode, workbook: input.sourcePath, results: [result], artifacts });
+      console.log(`第二阶段处理完成。Artifacts: ${artifacts}`);
+      console.log(`${result.assessmentNumber || '未生成测评编号'}: ${result.status}`);
+      console.log(`PHASE2_RESULT_JSON=${JSON.stringify({ results: [result] })}`);
+      process.exitCode = 1;
+      return;
+    }
+  }
   let browser;
   const results = [];
   try {
@@ -945,9 +1004,14 @@ async function main() {
       const code = error instanceof ApplicationError ? error.code : 'UNEXPECTED_ERROR';
       const message = error instanceof Error ? error.message : String(error);
       await screenshot(page, artifacts, 'stopped', true);
-      results.push({ assessmentNumber: record.assessmentNumber, status: 'blocked', code, message });
+      const retryable = error instanceof ApplicationError && error.retryable;
+      const details = error instanceof ApplicationError ? error.details : undefined;
+      results.push({ assessmentNumber: record.assessmentNumber, status: retryable ? 'retryable' : 'blocked', code, message, details });
       if (options.mode === 'save') {
-        await writeWorkbookState(input.sourcePath, { status: '需人工处理', notes: `${code}: ${message}` }).catch(() => {});
+        await writeWorkbookState(input.sourcePath, {
+          status: retryable ? '第二阶段待重试' : '需人工处理',
+          notes: `${code}: ${message}`,
+        }).catch(() => {});
       }
     }
     await writeResult(artifacts, { mode: options.mode, workbook: input.sourcePath, results, artifacts });

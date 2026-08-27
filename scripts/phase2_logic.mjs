@@ -157,6 +157,41 @@ export function toWslPath(value) {
   return windowsPath ? `/mnt/${windowsPath[1].toLowerCase()}/${windowsPath[2]}` : input;
 }
 
+function workbookLockPath(sourcePath) {
+  return path.join(path.dirname(sourcePath), `~$${path.basename(sourcePath)}`);
+}
+
+export async function ensureWorkbookWritable(workbookPath, { attempts = 15, intervalMs = 1000, onRetry } = {}) {
+  const sourcePath = toWslPath(workbookPath);
+  let lastError;
+  for (let attempt = 0; attempt <= attempts; attempt += 1) {
+    let handle;
+    try {
+      handle = await fs.open(sourcePath, 'r+');
+      return sourcePath;
+    } catch (error) {
+      lastError = error;
+      if (!['EACCES', 'EPERM', 'EBUSY'].includes(error?.code)) throw error;
+      if (attempt >= attempts) break;
+      const lockPath = workbookLockPath(sourcePath);
+      const lockPresent = await fs.access(lockPath).then(() => true).catch(() => false);
+      onRetry?.({ attempt: attempt + 1, lockPresent, lockPath, error });
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    } finally {
+      await handle?.close().catch(() => {});
+    }
+  }
+  const lockPath = workbookLockPath(sourcePath);
+  const lockPresent = await fs.access(lockPath).then(() => true).catch(() => false);
+  const reason = lockPresent
+    ? `检测到 WPS/Excel 锁定文件 ${lockPath}。`
+    : '文件可能被 WPS/Excel 占用或当前账号没有写权限。请关闭占用该工作簿的程序后重试。';
+  const error = new Error(`工作簿不可写：${sourcePath}。${reason}`);
+  error.code = 'WORKBOOK_NOT_WRITABLE';
+  error.cause = lastError;
+  throw error;
+}
+
 export const PHASE2_SELF_CHECK_NAME = 'OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx';
 export const PHASE2_REPORT_NAME = 'report.zip';
 

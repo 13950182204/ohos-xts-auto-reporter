@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
@@ -88,8 +88,38 @@ describe('phase2 safety boundary', () => {
     const source = readFileSync(join(process.cwd(), 'scripts', 'fill_phase2.mjs'), 'utf8')
     expect(source).toContain('REPORT_RELATION_MAX_WAIT_MS = 2 * 60 * 1000')
     expect(source).toContain('REPORT_RELATION_INITIALIZE_RETRY_MS = 30 * 1000')
+    expect(source).toContain('async function waitForReportStage')
+    expect(source).toContain('REPORT_STAGE_NOT_READY')
+    expect(source).toContain("reportProgress(60, '核对报告上传阶段'")
     expect(source).toContain('await initializeReportRelation()')
     expect(source).toContain('平台第4步设备报告关联在 2 分钟内仍未生成')
+  })
+
+  it('preserves the application for retryable report-stage failures instead of blocking the workbook', () => {
+    const source = readFileSync(join(process.cwd(), 'scripts', 'fill_phase2.mjs'), 'utf8')
+    expect(source).toContain('retryable = false')
+    expect(source).toContain("status: retryable ? '第二阶段待重试' : '需人工处理'")
+  })
+
+  it('detects a workbook that cannot be opened for writing before browser launch', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const directory = await mkdtemp(join(tmpdir(), 'ohos-phase2-lock-'))
+    const file = join(directory, 'application.xlsx')
+    try {
+      await writeFile(file, 'placeholder')
+      await chmod(file, 0o444)
+      await expect(logic.ensureWorkbookWritable(file, { attempts: 0 })).rejects.toMatchObject({ code: 'WORKBOOK_NOT_WRITABLE' })
+    } finally {
+      await chmod(file, 0o644).catch(() => {})
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('reports a locked workbook as retryable instead of a platform upload failure', () => {
+    const source = readFileSync(join(process.cwd(), 'scripts', 'fill_phase2.mjs'), 'utf8')
+    expect(source).toContain("const result = { assessmentNumber: input.record.assessmentNumber || '', status: 'retryable', code, message }")
+    expect(source).toContain('WORKBOOK_NOT_WRITABLE')
+    expect(source).toContain('请先关闭 WPS/Excel')
   })
 
   it('reduces structured save failures to their actionable platform message', () => {
