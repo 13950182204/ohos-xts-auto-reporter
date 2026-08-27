@@ -84,6 +84,20 @@ describe('phase2 safety boundary', () => {
     })
   })
 
+  it('waits for the asynchronously-created report relation before uploading PCS and XTS files', () => {
+    const source = readFileSync(join(process.cwd(), 'scripts', 'fill_phase2.mjs'), 'utf8')
+    expect(source).toContain('REPORT_RELATION_MAX_WAIT_MS = 2 * 60 * 1000')
+    expect(source).toContain('REPORT_RELATION_INITIALIZE_RETRY_MS = 30 * 1000')
+    expect(source).toContain('await initializeReportRelation()')
+    expect(source).toContain('平台第4步设备报告关联在 2 分钟内仍未生成')
+  })
+
+  it('reduces structured save failures to their actionable platform message', () => {
+    const source = readFileSync(join(process.cwd(), 'src', 'phase2-routes.ts'), 'utf8')
+    expect(source).toContain('function formatSaveFailure')
+    expect(source).toContain('parsed.failureMessage || result.output')
+  })
+
   it('validates report and self-check paths while allowing deferred mirror upload', async () => {
     const logic = await import('../scripts/phase2_logic.mjs')
     const errors = await logic.validatePhase2Attachments({

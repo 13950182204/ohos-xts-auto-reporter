@@ -109,13 +109,25 @@ function parsePreflight(output: string): { ok: boolean; errors?: string[]; summa
   return { ok: false, errors: [output || '预检进程未返回结果。'], message: '工作簿预检失败。' }
 }
 
-function parseSave(output: string): { summary?: Record<string, unknown> } {
+function formatSaveFailure(summary?: Record<string, unknown>): string | undefined {
+  const results = Array.isArray(summary?.results) ? summary.results : []
+  const first = results[0]
+  if (first === null || typeof first !== 'object' || Array.isArray(first)) return undefined
+  const value = first as Record<string, unknown>
+  const code = text(value.code)
+  const message = text(value.message)
+  if (!message) return undefined
+  return code ? `${code}: ${message}` : message
+}
+
+function parseSave(output: string): { summary?: Record<string, unknown>; failureMessage?: string } {
   const marker = [...output.split(/\r?\n/)].reverse().find((line: string) => line.startsWith('PHASE2_RESULT_JSON='))
   if (!marker) return {}
   try {
     const value: unknown = JSON.parse(marker.slice('PHASE2_RESULT_JSON='.length))
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      return { summary: value as Record<string, unknown> }
+      const summary = value as Record<string, unknown>
+      return { summary, failureMessage: formatSaveFailure(summary) }
     }
   } catch {
     // Keep the normal save error when the structured marker is malformed.
@@ -168,7 +180,7 @@ async function handleSave(req: IncomingMessage, res: ServerResponse, settings: P
     }, [username, password])
     const ok = result.code === 0
     const parsed = parseSave(result.output)
-    const message = ok ? '第二阶段草稿已保存，尚未提交。' : result.output || '第二阶段保存失败。'
+    const message = ok ? '第二阶段草稿已保存，尚未提交。' : parsed.failureMessage || result.output || '第二阶段保存失败。'
     updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok, message, errors: ok ? undefined : [message], summary: parsed.summary })
     sendJson(res, ok ? 200 : 422, { ok, message, summary: parsed.summary, output: result.output || undefined })
   } catch (error) {

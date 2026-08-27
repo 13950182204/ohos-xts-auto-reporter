@@ -17,6 +17,11 @@ import {
 
 const LOGIN_ENTRY_URL = 'https://compatibility.openharmony.cn/#/personal';
 const VERIFICATION_MARKERS = /验证码|captcha|短信验证|手机验证|安全验证|人机验证/i;
+// The report row is generated asynchronously after software definition enters
+// step 4. The observed platform delay can exceed the old 10-second window.
+const REPORT_RELATION_MAX_WAIT_MS = 2 * 60 * 1000;
+const REPORT_RELATION_POLL_INTERVAL_MS = 1000;
+const REPORT_RELATION_INITIALIZE_RETRY_MS = 30 * 1000;
 
 class ApplicationError extends Error {
   constructor(code, message, { global = false } = {}) {
@@ -528,21 +533,39 @@ async function savePhase2Attachments(page, applicationId, record) {
   if (!selfCheckPath || !reportPath) {
     throw new ApplicationError('PHASE2_ATTACHMENTS_MISSING', '缺少自检表或报告路径，已停止保存。');
   }
-  let relations = await platformRequest(page, `/certification/getCertificationReportRel?id=${encodeURIComponent(applicationId)}`, { method: 'GET' });
-  let relation = Array.isArray(relations) ? relations[0] : null;
-  if (!relation) {
-    // The platform creates the per-device report row on the first step-4 save.
+  const getReportRelation = async () => {
+    const relations = await platformRequest(page, `/certification/getCertificationReportRel?id=${encodeURIComponent(applicationId)}`, { method: 'GET' });
+    return Array.isArray(relations) ? relations[0] : null;
+  };
+  const initializeReportRelation = async () => {
+    // This is the platform's draft-save endpoint for its per-device report row.
+    // It does not upload a file or advance to sample shipping/submission.
     await platformRequest(page, '/certification/saveReport', {
       method: 'POST',
       data: { isSave: true, id: applicationId, mirrorFileId: '', testReportFileId: '' },
     });
+  };
+
+  let relation = await getReportRelation();
+  if (!relation) {
+    await initializeReportRelation();
+    const deadline = Date.now() + REPORT_RELATION_MAX_WAIT_MS;
+    let nextInitializeAt = Date.now() + REPORT_RELATION_INITIALIZE_RETRY_MS;
+    while (!relation && Date.now() < deadline) {
+      await page.waitForTimeout(REPORT_RELATION_POLL_INTERVAL_MS);
+      relation = await getReportRelation();
+      if (!relation && Date.now() >= nextInitializeAt) {
+        await initializeReportRelation();
+        nextInitializeAt = Date.now() + REPORT_RELATION_INITIALIZE_RETRY_MS;
+      }
+    }
   }
-  for (let attempt = 0; attempt < 10 && !relation; attempt += 1) {
-    relations = await platformRequest(page, `/certification/getCertificationReportRel?id=${encodeURIComponent(applicationId)}`, { method: 'GET' });
-    relation = Array.isArray(relations) ? relations[0] : null;
-    if (!relation) await page.waitForTimeout(1000);
+  if (!relation?.id) {
+    throw new ApplicationError(
+      'REPORT_RELATION_MISSING',
+      '平台第4步设备报告关联在 2 分钟内仍未生成，未开始上传 PCS 自检表或 XTS 报告；请稍后重试。',
+    );
   }
-  if (!relation?.id) throw new ApplicationError('REPORT_RELATION_MISSING', '平台第4步未生成设备报告关联，已停止上传；请在平台报告上传页人工初始化报告行后重试。');
   const xts = await uploadTestReportFile(page, reportPath, true, record.systemType);
   const pcs = await uploadTestReportFile(page, selfCheckPath, false, record.systemType);
   await platformRequest(page, `/certification/saveTestReport?certificationId=${encodeURIComponent(applicationId)}&isSave=true`, {
