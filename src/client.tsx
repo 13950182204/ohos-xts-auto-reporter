@@ -15,6 +15,7 @@ type ResponseState = {
   message?: string
   errors?: string[]
   summary?: Record<string, unknown>
+  batch?: Record<string, unknown>
   state?: Record<string, unknown>
 }
 
@@ -101,7 +102,7 @@ export function ReporterSettingsCard({ scope }: CardProps) {
 
   const summary = useMemo(() => hostState?.state as Record<string, unknown> | undefined, [hostState])
   const displayState = result && !summary?.finishedAt
-    ? { ...(summary ?? { phase: 'idle' }), finishedAt: new Date().toISOString(), ok: result.ok, message: result.message }
+    ? { ...(summary ?? { phase: 'idle' }), finishedAt: new Date().toISOString(), ok: result.ok, message: result.message, batch: result.batch }
     : summary
   const operation = (result?.summary ?? summary?.summary) as Record<string, unknown> | undefined
   const progress = (displayState?.progress ?? summary?.progress) as Record<string, unknown> | undefined
@@ -110,6 +111,12 @@ export function ReporterSettingsCard({ scope }: CardProps) {
     : undefined
   const progressStage = displayValue(progress?.stage)
   const progressDetail = displayValue(progress?.detail)
+  const batch = (displayState?.batch ?? summary?.batch ?? result?.batch) as Record<string, unknown> | undefined
+  const batchMode = displayValue(batch?.mode)
+  const batchItems = Array.isArray(batch?.items) ? batch.items as Array<Record<string, unknown>> : []
+  const batchTaskCount = Number.isFinite(Number(batch?.taskCount)) ? Number(batch?.taskCount) : batchItems.filter((item) => item.taskIndex).length
+  const batchSkippedCount = Number.isFinite(Number(batch?.skippedCount)) ? Number(batch?.skippedCount) : batchItems.filter((item) => displayValue(item.status) === 'skipped').length
+  const batchCompletedCount = batchItems.filter((item) => ['saved', 'skipped', 'blocked', 'retryable'].includes(displayValue(item.status))).length
   const results = Array.isArray(operation?.results) ? operation.results as Array<Record<string, unknown>> : []
   const firstResult = results[0]
   const attachments = firstResult?.attachments as Record<string, Record<string, unknown>> | undefined
@@ -176,17 +183,17 @@ export function ReporterSettingsCard({ scope }: CardProps) {
   },
   createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', marginBottom: '10px' } },
   createElement('strong', { style: { fontSize: '15px' } }, 'OpenHarmony XTS 自动上报'),
-    createElement('span', { style: { fontSize: '12px', opacity: 0.72 } }, '第二阶段草稿')),
+    createElement('span', { style: { fontSize: '12px', opacity: 0.72 } }, '第二阶段资料')),
   createElement('div', { style: gridStyle },
   createElement('label', { style: labelStyle() }, '账号', createElement('input', { type: 'text', autoComplete: 'username', value: username, onChange: onText(setUsername), disabled: busy, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '密码', createElement('input', { type: 'password', autoComplete: 'current-password', value: password, placeholder: '留空使用已保存密码或环境变量', onChange: onText(setPassword), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: fullWidthStyle }, '第二阶段 Excel 文件', createElement('input', { type: 'text', value: workbookPath, placeholder: '绝对路径，例如 D:\\ohos\\XTS6.1\\OpenHarmony兼容性申请_第二阶段.xlsx', onChange: onText(setWorkbookPath), disabled: busy, style: inputStyle() })),
+  createElement('label', { style: fullWidthStyle }, 'Excel 文件或批量目录', createElement('input', { type: 'text', value: workbookPath, placeholder: '单个 Excel 或目录，例如 D:\\ohos\\XTS6.1\\DHong', onChange: onText(setWorkbookPath), disabled: busy, style: inputStyle() })),
   createElement('label', { style: fullWidthStyle }, '镜像固件路径（预留）', createElement('input', { type: 'text', value: mirrorPath, readOnly: true, placeholder: '未来固件自动上传，当前留空', disabled: true, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '企业联系电话', createElement('input', { type: 'tel', value: contactPhone, onChange: onText(setContactPhone), disabled: busy, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '企业邮箱', createElement('input', { type: 'email', value: contactEmail, onChange: onText(setContactEmail), disabled: busy, style: inputStyle() }))),
   createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' } },
     createElement('button', { type: 'button', onClick: () => { void preflight() }, disabled: busy || !writable, style: buttonStyle(false) }, '预检'),
-    createElement('button', { type: 'button', onClick: () => { void saveDraft() }, disabled: busy || !writable, style: buttonStyle(true) }, busy ? '处理中…' : '保存第二阶段草稿')),
+    createElement('button', { type: 'button', onClick: () => { void saveDraft() }, disabled: busy || !writable, style: buttonStyle(true) }, busy ? '处理中…' : '评测资料提交')),
   createElement('p', { style: { fontSize: '12px', lineHeight: 1.5, opacity: 0.68, margin: '12px 0 0' } }, '镜像上传暂未启用；不会进入样机寄送或提交申请。'),
   showProgress ? createElement('div', { style: { marginTop: '14px' } },
     createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '6px', fontSize: '12px' } },
@@ -201,6 +208,25 @@ export function ReporterSettingsCard({ scope }: CardProps) {
       style: { height: '8px', overflow: 'hidden', borderRadius: '4px', background: 'var(--dsw-color-fill-secondary, rgba(127, 127, 127, 0.22))' },
     }, createElement('div', { style: { width: `${progressPercent}%`, height: '100%', borderRadius: 'inherit', background: result?.ok === false ? 'var(--dsw-color-danger, #dc2626)' : 'var(--dsw-color-primary, #2563eb)', transition: 'width 180ms ease-out' } })),
     progressDetail ? createElement('div', { style: { marginTop: '6px', color: 'var(--dsw-color-text-secondary, inherit)', fontSize: '12px', lineHeight: 1.5 } }, progressDetail) : null,
+  ) : null,
+  batchMode === 'batch' && batchItems.length > 0 ? createElement('div', { style: { marginTop: '14px' } },
+    createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '8px', fontSize: '12px' } },
+      createElement('strong', null, `批量评测进度（${batchCompletedCount}/${batchTaskCount + batchSkippedCount}）`),
+      createElement('span', { style: { maxWidth: '50%', minWidth: 0, overflowWrap: 'anywhere', textAlign: 'right', opacity: 0.72 } }, batch?.rootPath ? displayValue(batch.rootPath) : '')),
+    createElement('div', { style: { display: 'grid', gap: '8px' } }, batchItems.map((item, index) => {
+      const itemPercent = Number.isFinite(Number(item.percent)) ? Math.max(0, Math.min(100, Number(item.percent))) : 0
+      const itemStatus = displayValue(item.status) || 'pending'
+      const itemName = displayValue(item.name) || displayValue(item.directory) || `评测 ${index + 1}`
+      return createElement('div', { key: `${displayValue(item.directory)}-${String(item.taskIndex ?? index)}`, style: { padding: '8px 10px', border: '1px solid var(--dsw-color-border, #cbd5e1)', borderRadius: '6px' } },
+        createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12px' } },
+          createElement('span', { style: { minWidth: 0, overflowWrap: 'anywhere' } }, itemName),
+          createElement('span', null, `${Math.round(itemPercent)}%`)),
+        createElement('div', { role: 'progressbar', 'aria-label': `${itemName} 评测进度`, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(itemPercent), style: { height: '6px', marginTop: '6px', overflow: 'hidden', borderRadius: '3px', background: 'var(--dsw-color-fill-secondary, rgba(127, 127, 127, 0.22))' } },
+          createElement('div', { style: { width: `${itemPercent}%`, height: '100%', borderRadius: 'inherit', background: ['blocked', 'retryable'].includes(itemStatus) ? 'var(--dsw-color-danger, #dc2626)' : 'var(--dsw-color-primary, #2563eb)', transition: 'width 180ms ease-out' } })),
+        createElement('div', { style: { marginTop: '5px', fontSize: '12px', lineHeight: 1.45, color: ['blocked', 'retryable'].includes(itemStatus) ? 'var(--dsw-color-danger, #b91c1c)' : 'var(--dsw-color-text-secondary, inherit)' } }, `${displayValue(item.stage) || itemStatus}${item.detail ? `：${displayValue(item.detail)}` : ''}`),
+        item.assessmentNumber ? createElement('div', { style: { marginTop: '3px', fontSize: '12px' } }, `测评编号：${displayValue(item.assessmentNumber)}`) : null,
+      )
+    })),
   ) : null,
   result ? createElement('div', { role: 'status', style: { marginTop: '10px', color: result.ok ? '#15803d' : '#b91c1c', whiteSpace: 'pre-wrap', fontSize: '13px' } }, result.ok ? (result.message || '操作成功。') : [result.message, ...(result.errors ?? [])].filter(Boolean).join('\n')) : null,
   displayState !== undefined && (displayState.phase !== 'idle' || displayState.finishedAt) ? createElement('div', { role: 'status', style: { marginTop: '8px', fontSize: '12px', lineHeight: 1.6 } },

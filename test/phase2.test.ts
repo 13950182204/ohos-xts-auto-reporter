@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { execFile as execFileCallback } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
+import { promisify } from 'node:util'
 import { Config, Phase2Settings } from '../src/config.ts'
 import { apply as applyClient } from '../src/client.tsx'
 import { registerPhase2Settings } from '../src/phase2-routes.ts'
+
+const execFile = promisify(execFileCallback)
 
 describe('phase2 settings', () => {
   it('marks username and password as DSH secrets and keeps contact defaults', () => {
@@ -53,16 +57,23 @@ describe('phase2 client card registration', () => {
 describe('phase2 safety boundary', () => {
   it('does not contain a formal submission endpoint or action', async () => {
     const source = readFileSync(join(process.cwd(), 'scripts', 'fill_phase2.mjs'), 'utf8')
+    const batchSource = readFileSync(join(process.cwd(), 'scripts', 'phase2_batch.mjs'), 'utf8')
     const client = readFileSync(join(process.cwd(), 'src', 'client.tsx'), 'utf8')
-    expect(source).not.toMatch(/\/submit(?:["'`]|\b)/)
+    expect(source).not.toContain('/submit')
     expect(source).not.toContain('确认提交')
     expect(source).toContain('isSave: true')
     expect(source).toContain('PHASE2_RESULT_JSON=')
+    expect(batchSource).not.toContain('/submit')
+    expect(batchSource).not.toContain('确认提交')
+    expect(batchSource).toContain('processRecord')
+    expect(batchSource).toContain('PHASE2_BATCH_ITEM_RESULT=')
     expect(client).toContain('申请标识')
     expect(client).toContain('测评编号')
     expect(client).not.toContain('PCS 自检表（自动获取）')
     expect(client).not.toContain('XTS 报告 ZIP（自动获取）')
     expect(client).toContain('镜像固件路径（预留）')
+    expect(client).toContain('评测资料提交')
+    expect(client).toContain('批量评测进度')
   })
 
   it('rejects a missing workbook before any browser action', async () => {
@@ -82,6 +93,93 @@ describe('phase2 safety boundary', () => {
       reportPath: 'D:\\ohos\\XTS6.1\\DHong\\A537\\report\\report.zip',
       mirrorPath: '',
     })
+  })
+
+  it('discovers only immediate child directories with the exact phase-2 workbook name', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const root = await mkdtemp(join(tmpdir(), 'ohos-phase2-batch-'))
+    try {
+      await logic.createPhase2Workbook(join(root, 'RK3568', 'OpenHarmony兼容性申请_第二阶段.xlsx'))
+      await mkdir(join(root, 'A537'), { recursive: true })
+      await logic.createPhase2Workbook(join(root, 'OpenHarmony兼容性批量结果_旧结果', 'OpenHarmony兼容性申请_第二阶段.xlsx'))
+      await writeFile(join(root, 'OpenHarmony兼容性申请_第二阶段.xlsx'), 'root workbook should not be treated as a child task')
+      const discovery = await logic.discoverPhase2Workbooks(root)
+      expect(discovery.mode).toBe('batch')
+      expect(discovery.items).toHaveLength(1)
+      expect(discovery.items[0].name).toBe('RK3568')
+      expect(discovery.skipped).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'A537' })]))
+      expect(discovery.items[0].workbookPath).toContain('RK3568')
+      expect(discovery.items.map((item: { name: string }) => item.name)).not.toContain('OpenHarmony兼容性批量结果_旧结果')
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('accepts a single exact workbook path as a one-item discovery', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const root = await mkdtemp(join(tmpdir(), 'ohos-phase2-single-'))
+    const file = join(root, 'OpenHarmony兼容性申请_第二阶段.xlsx')
+    try {
+      await writeFile(file, 'placeholder')
+      const discovery = await logic.discoverPhase2Workbooks(file)
+      expect(discovery.mode).toBe('single')
+      expect(discovery.items).toEqual([expect.objectContaining({ workbookPath: file, name: root.split('/').pop() })])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  it('lists each batch task before the credential gate without launching a browser', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const root = await mkdtemp(join(tmpdir(), 'ohos-phase2-batch-run-'))
+    const directory = join(root, 'A333')
+    const workbookPath = join(directory, 'OpenHarmony兼容性申请_第二阶段.xlsx')
+    try {
+      await logic.createPhase2Workbook(workbookPath)
+      await mkdir(join(directory, 'report'), { recursive: true })
+      await mkdir(join(root, 'NoWorkbook'), { recursive: true })
+      await writeFile(join(directory, 'A333.png'), 'image')
+      await writeFile(join(directory, 'pcid.sc'), 'pcid')
+      await writeFile(join(directory, 'OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx'), 'pcs')
+      await writeFile(join(directory, 'report', 'report.zip'), 'report')
+      const ExcelJS = logic.loadExcelJs()
+      const workbook = new ExcelJS.Workbook()
+      await workbook.xlsx.readFile(workbookPath)
+      const sheet = workbook.getWorksheet('模组开发板')
+      for (const [cell, value] of Object.entries({
+        C8: '标准系统', C9: 'OpenHarmony 6.1 Release', C10: 'A333', C11: 'A333', C12: 'A333',
+        C13: 'arm64', C14: '支持应用安装', C15: '带屏', C16: '描述', C17: join(directory, 'A333.png'),
+        C18: '发证即公示', C22: '1.0.0', C23: '2026/08/28', C24: 'release', C25: 'hash', C26: join(directory, 'pcid.sc'),
+      })) sheet.getCell(cell).value = value
+      await workbook.xlsx.writeFile(workbookPath)
+
+      let failure: { code?: number; stdout?: string; stderr?: string } | undefined
+      try {
+        await execFile(process.execPath, [join(process.cwd(), 'scripts', 'phase2_batch.mjs'), '--input', root, '--save'], {
+          cwd: process.cwd(),
+          env: { ...process.env, OH_USERNAME: '', OH_PASSWORD: '' },
+        })
+      } catch (error) {
+        failure = error as { code?: number; stdout?: string; stderr?: string }
+      }
+      expect(failure?.code).toBe(2)
+      const output = `${failure?.stdout ?? ''}\n${failure?.stderr ?? ''}`
+      expect(output).toContain('PHASE2_BATCH_INIT=')
+      expect(output).toContain('"name":"A333"')
+      expect(output).toContain('"name":"NoWorkbook"')
+      expect(output).toContain('CREDENTIALS_MISSING')
+      expect(output).not.toContain('登录平台')
+      const resultLine = output.split(/\r?\n/).find((line) => line.startsWith('PHASE2_RESULT_JSON='))
+      expect(resultLine).toBeTruthy()
+      const summary = JSON.parse(resultLine!.slice('PHASE2_RESULT_JSON='.length)) as { items?: Array<{ name?: string; status?: string }>; skippedCount?: number }
+      expect(summary.skippedCount).toBe(1)
+      expect(summary.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'A333', status: 'blocked' }),
+        expect.objectContaining({ name: 'NoWorkbook', status: 'skipped' }),
+      ]))
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 
   it('waits for the asynchronously-created report relation before uploading PCS and XTS files', () => {
@@ -135,6 +233,7 @@ describe('phase2 safety boundary', () => {
     expect(source).toContain("'aria-valuenow'")
     expect(source).toContain('XTS 报告上传进度')
     expect(source).toContain('progressPercent')
+    expect(source).toContain('aria-label')
   })
 
   it('validates report and self-check paths while allowing deferred mirror upload', async () => {

@@ -12,6 +12,30 @@ type ProgressState = {
   percent: number
   stage: string
   detail?: string
+  itemIndex?: number
+  itemTotal?: number
+  itemPercent?: number
+  workbookPath?: string
+}
+type BatchItemState = {
+  directory?: string
+  workbookPath?: string
+  name?: string
+  taskIndex?: number
+  status: string
+  percent: number
+  stage: string
+  detail?: string
+  applicationId?: string
+  assessmentNumber?: string
+  code?: string
+}
+type BatchState = {
+  mode?: 'single' | 'batch'
+  rootPath?: string
+  taskCount: number
+  skippedCount: number
+  items: BatchItemState[]
 }
 type RunState = {
   phase: 'idle' | 'preflight' | 'saving'
@@ -22,6 +46,7 @@ type RunState = {
   errors?: string[]
   summary?: Record<string, unknown>
   progress?: ProgressState
+  batch?: BatchState
 }
 
 const state: RunState = { phase: 'idle' }
@@ -63,8 +88,8 @@ function redact(value: string, secrets: string[]): string {
   return secrets.filter(Boolean).reduce((result, secret) => result.replaceAll(secret, '[已隐藏]'), value)
 }
 
-function workbookPath(body: Record<string, unknown>, settings: Phase2SettingsValue): string {
-  return text(body.workbookPath) || text(settings.workbookPath)
+function inputPath(body: Record<string, unknown>, settings: Phase2SettingsValue): string {
+  return text(body.inputPath) || text(body.workbookPath) || text(settings.workbookPath)
 }
 
 function attachmentSettings(workbook: string): Record<string, string> {
@@ -95,16 +120,117 @@ function parseProgressLine(line: string): ProgressState | undefined {
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
     const value = parsed as Record<string, unknown>
     const rawPercent = Number(value.percent)
+    const rawItemPercent = Number(value.itemPercent)
     const stage = text(value.stage)
     if (!Number.isFinite(rawPercent) || !stage) return undefined
     return {
       percent: Math.max(0, Math.min(100, Math.round(rawPercent))),
       stage,
       detail: text(value.detail) || undefined,
+      itemIndex: Number.isFinite(Number(value.itemIndex)) ? Number(value.itemIndex) : undefined,
+      itemTotal: Number.isFinite(Number(value.itemTotal)) ? Number(value.itemTotal) : undefined,
+      itemPercent: Number.isFinite(rawItemPercent)
+        ? Math.max(0, Math.min(100, Math.round(rawItemPercent)))
+        : Math.max(0, Math.min(100, Math.round(rawPercent))),
+      workbookPath: text(value.workbookPath) || undefined,
     }
   } catch {
     return undefined
   }
+}
+
+function parseStructuredLine<T>(line: string, prefix: string): T | undefined {
+  if (!line.startsWith(prefix)) return undefined
+  try {
+    const value: unknown = JSON.parse(line.slice(prefix.length))
+    return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as T : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function batchFromValue(value: unknown): BatchState | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const source = value as Record<string, unknown>
+  const rawItems = Array.isArray(source.items) ? source.items : []
+  const items: BatchItemState[] = rawItems.filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object' && !Array.isArray(item)).map((item) => ({
+    directory: text(item.directory) || undefined,
+    workbookPath: text(item.workbookPath) || undefined,
+    name: text(item.name) || undefined,
+    taskIndex: Number.isFinite(Number(item.taskIndex)) ? Number(item.taskIndex) : undefined,
+    status: text(item.status) || 'pending',
+    percent: Number.isFinite(Number(item.percent)) ? Math.max(0, Math.min(100, Number(item.percent))) : 0,
+    stage: text(item.stage) || '待处理',
+    detail: text(item.detail) || undefined,
+    applicationId: text(item.applicationId) || undefined,
+    assessmentNumber: text(item.assessmentNumber)
+      || (item.summary !== null && typeof item.summary === 'object' && !Array.isArray(item.summary)
+        ? text((item.summary as Record<string, unknown>).assessmentNumber)
+        : undefined),
+    code: text(item.code) || undefined,
+  }))
+  const rawSkipped = Array.isArray(source.skipped) ? source.skipped : []
+  for (const skipped of rawSkipped) {
+    if (skipped === null || typeof skipped !== 'object' || Array.isArray(skipped)) continue
+    const item = skipped as Record<string, unknown>
+    const directory = text(item.directory) || undefined
+    if (directory && items.some((candidate) => candidate.directory === directory)) continue
+    items.push({
+      directory,
+      name: text(item.name) || directory,
+      status: 'skipped',
+      percent: 100,
+      stage: '已跳过',
+      detail: text(item.reason) || '未找到第二阶段 Excel。',
+    })
+  }
+  items.sort((left, right) => (left.name || left.directory || '').localeCompare(right.name || right.directory || ''))
+  const skippedCount = Number.isFinite(Number(source.skippedCount))
+    ? Number(source.skippedCount)
+    : items.filter((item) => item.status === 'skipped').length
+  const taskCount = Number.isFinite(Number(source.taskCount)) ? Number(source.taskCount) : items.filter((item) => item.taskIndex).length
+  const mode = text(source.mode)
+  return {
+    mode: mode === 'single' || mode === 'batch' ? mode : undefined,
+    rootPath: text(source.rootPath) || undefined,
+    taskCount,
+    skippedCount,
+    items,
+  }
+}
+
+function applyBatchProgress(batch: BatchState | undefined, progress: ProgressState): { batch?: BatchState; progress: ProgressState } {
+  if (!batch || !progress.itemIndex || !progress.itemTotal) return { batch, progress }
+  const itemIndex = progress.itemIndex
+  const itemPercent = progress.itemPercent ?? progress.percent
+  const items = batch.items.map((item) => item.taskIndex === itemIndex
+    ? { ...item, status: item.status === 'skipped' ? item.status : 'saving', percent: itemPercent, stage: progress.stage, detail: progress.detail, workbookPath: progress.workbookPath || item.workbookPath }
+    : item)
+  const overall = Math.round(((itemIndex - 1) * 100 + itemPercent) / progress.itemTotal)
+  return { batch: { ...batch, taskCount: progress.itemTotal, items }, progress: { ...progress, percent: Math.max(0, Math.min(100, overall)), itemPercent } }
+}
+
+function applyBatchItemResult(batch: BatchState | undefined, value: Record<string, unknown>): BatchState | undefined {
+  if (!batch) return batch
+  const taskIndex = Number(value.taskIndex)
+  const status = text(value.status)
+  const stage = ({ saved: '已完成', skipped: '已跳过', blocked: '已停止', retryable: '待重试' } as Record<string, string>)[status] || status
+  const items = batch.items.map((item) => item.taskIndex === taskIndex ? {
+    ...item,
+    status: status || item.status,
+    percent: ['saved', 'skipped', 'blocked', 'retryable'].includes(status) ? 100 : item.percent,
+    stage: stage || item.stage,
+    detail: text(value.message) || item.detail,
+    applicationId: text(value.applicationId) || item.applicationId,
+    assessmentNumber: text(value.assessmentNumber) || item.assessmentNumber,
+    code: text(value.code) || item.code,
+  } : item)
+  return { ...batch, items }
+}
+
+function batchFromSummary(summary: Record<string, unknown> | undefined): BatchState | undefined {
+  if (!summary || !Array.isArray(summary.items)) return undefined
+  return batchFromValue(summary)
 }
 
 function runScript(
@@ -113,6 +239,8 @@ function runScript(
   env: NodeJS.ProcessEnv,
   secrets: string[],
   onProgress?: (progress: ProgressState) => void,
+  onBatchInit?: (batch: BatchState) => void,
+  onBatchItemResult?: (result: Record<string, unknown>) => void,
 ): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
     const child = execFile(process.execPath, [join(scriptsDirectory(), script), ...args], {
@@ -131,6 +259,10 @@ function runScript(
       for (const line of lines) {
         const progress = parseProgressLine(line)
         if (progress) onProgress?.(progress)
+        const batch = parseStructuredLine<BatchState>(line, 'PHASE2_BATCH_INIT=')
+        if (batch) onBatchInit?.(batchFromValue(batch) || { taskCount: 0, skippedCount: 0, items: [] })
+        const itemResult = parseStructuredLine<Record<string, unknown>>(line, 'PHASE2_BATCH_ITEM_RESULT=')
+        if (itemResult) onBatchItemResult?.(itemResult)
       }
     })
     const timeout = setTimeout(() => child.kill('SIGTERM'), 15 * 60 * 1000)
@@ -139,13 +271,16 @@ function runScript(
 }
 
 function parsePreflight(output: string): { ok: boolean; errors?: string[]; summary?: Record<string, unknown>; message?: string } {
-  try {
-    const value: unknown = JSON.parse(output)
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      return value as { ok: boolean; errors?: string[]; summary?: Record<string, unknown>; message?: string }
+  for (const line of output.split(/\r?\n/).reverse()) {
+    if (!line.trim()) continue
+    try {
+      const value: unknown = JSON.parse(line)
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        return value as { ok: boolean; errors?: string[]; summary?: Record<string, unknown>; message?: string }
+      }
+    } catch {
+      // Progress lines are expected before the final one-line JSON result.
     }
-  } catch {
-    // The fallback below preserves the child error while keeping the wire shape stable.
   }
   return { ok: false, errors: [output || '预检进程未返回结果。'], message: '工作簿预检失败。' }
 }
@@ -182,16 +317,21 @@ async function handlePreflight(req: IncomingMessage, res: ServerResponse, settin
   try {
     const body = await readBody(req)
     const value = currentSettings(settings)
-    const path = workbookPath(body, value)
-    if (!path) return sendJson(res, 400, { ok: false, message: '没有提供对应的申请表格文件，已停止执行。' })
-    updateState({ phase: 'preflight', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: '正在读取工作簿。', errors: undefined, summary: undefined, progress: { percent: 5, stage: '读取工作簿', detail: '正在检查设备类型和必填字段。' } })
-    const result = await runScript('preflight_phase2.mjs', ['--workbook', path], {}, [], (progress) => {
+    const path = inputPath(body, value)
+    if (!path) return sendJson(res, 400, { ok: false, message: '没有提供对应的申请表格文件或批量目录，已停止执行。' })
+    const isDirectoryInput = !path.toLowerCase().endsWith('.xlsx')
+    updateState({ phase: 'preflight', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: isDirectoryInput ? '正在扫描批量目录。' : '正在读取工作簿。', errors: undefined, summary: undefined, batch: undefined, progress: { percent: 5, stage: isDirectoryInput ? '扫描批量目录' : '读取工作簿', detail: isDirectoryInput ? '正在检查一级子目录中的申请表。' : '正在检查设备类型和必填字段。' } })
+    const result = await runScript('preflight_phase2.mjs', ['--input', path], {}, [], (progress) => {
       updateState({ progress, message: progress.detail || progress.stage })
+    }, (batch) => {
+      updateState({ batch })
+    }, (itemResult) => {
+      updateState({ batch: applyBatchItemResult(state.batch, itemResult) })
     })
     const parsed = parsePreflight(result.output)
     const response = { ...parsed, ok: result.code === 0 && parsed.ok, output: result.code === 0 ? undefined : parsed.message }
-    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: response.ok, message: response.message, errors: response.errors, summary: response.summary, progress: { percent: 100, stage: response.ok ? '预检完成' : '预检失败', detail: response.ok ? '工作簿和附件路径可以使用。' : response.message } })
-    sendJson(res, response.ok ? 200 : 422, response)
+    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: response.ok, message: response.message, errors: response.errors, summary: response.summary, batch: batchFromSummary(response.summary), progress: { percent: 100, stage: response.ok ? '预检完成' : '预检失败', detail: response.ok ? response.message || '工作簿和附件路径可以使用。' : response.message } })
+    sendJson(res, response.ok ? 200 : 422, { ...response, batch: state.batch })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: false, message, errors: [message], progress: { percent: 100, stage: '预检失败', detail: message } })
@@ -205,29 +345,39 @@ async function handleSave(req: IncomingMessage, res: ServerResponse, settings: P
   try {
     const body = await readBody(req)
     const value = currentSettings(settings)
-    const path = workbookPath(body, value)
+    const path = inputPath(body, value)
     const username = text(value.username) || text(process.env.OH_USERNAME)
     const password = text(value.password) || text(process.env.OH_PASSWORD)
     if (!username || !password) return sendJson(res, 400, { ok: false, message: '没有填写对应账号密码，已停止执行。' })
-    if (!path) return sendJson(res, 400, { ok: false, message: '没有提供对应的申请表格文件，已停止执行。' })
-    const attachments = attachmentSettings(path)
-    updateState({ phase: 'saving', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: '正在启动浏览器流程。', errors: undefined, summary: undefined, progress: { percent: 2, stage: '启动流程', detail: '正在登录兼容性测评平台。' } })
-    const result = await runScript('fill_phase2.mjs', ['--phase2', '--workbook', path, '--save'], {
+    if (!path) return sendJson(res, 400, { ok: false, message: '没有提供对应的申请表格文件或批量目录，已停止执行。' })
+    const isDirectoryInput = !path.toLowerCase().endsWith('.xlsx')
+    const scriptName = isDirectoryInput ? 'phase2_batch.mjs' : 'fill_phase2.mjs'
+    const scriptArgs = isDirectoryInput ? ['--input', path, '--save'] : ['--phase2', '--workbook', path, '--save']
+    const attachments = isDirectoryInput ? {} : attachmentSettings(path)
+    updateState({ phase: 'saving', startedAt: new Date().toISOString(), finishedAt: undefined, ok: undefined, message: '正在启动浏览器流程。', errors: undefined, summary: undefined, batch: undefined, progress: { percent: 2, stage: '启动流程', detail: isDirectoryInput ? '正在扫描批量目录。' : '正在登录兼容性测评平台。' } })
+    const result = await runScript(scriptName, scriptArgs, {
       OH_USERNAME: username,
       OH_PASSWORD: password,
       OH_CONTACT_PHONE: text(value.contactPhone) || '13950182204',
       OH_CONTACT_EMAIL: text(value.contactEmail) || '102438@dnake.com',
-      OH_SELF_CHECK_PATH: attachments.selfCheckPath,
-      OH_REPORT_PATH: attachments.reportPath,
+      OH_SELF_CHECK_PATH: attachments.selfCheckPath || '',
+      OH_REPORT_PATH: attachments.reportPath || '',
       OH_MIRROR_PATH: '',
     }, [username, password], (progress) => {
-      updateState({ progress, message: progress.detail || progress.stage })
+      const merged = applyBatchProgress(state.batch, progress)
+      updateState({ progress: merged.progress, batch: merged.batch, message: progress.detail || progress.stage })
+    }, (batch) => {
+      updateState({ batch })
+    }, (itemResult) => {
+      updateState({ batch: applyBatchItemResult(state.batch, itemResult) })
     })
     const ok = result.code === 0
     const parsed = parseSave(result.output)
-    const message = ok ? '第二阶段草稿已保存，尚未提交。' : parsed.failureMessage || result.output || '第二阶段保存失败。'
-    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok, message, errors: ok ? undefined : [message], summary: parsed.summary, progress: { percent: 100, stage: ok ? '已完成' : '已停止', detail: message } })
-    sendJson(res, ok ? 200 : 422, { ok, message, summary: parsed.summary, output: result.output || undefined })
+    const message = ok
+      ? (isDirectoryInput ? '批量评测资料已处理完成，尚未最终提交。' : '评测资料已保存，尚未最终提交。')
+      : parsed.failureMessage || result.output || '评测资料处理失败。'
+    updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok, message, errors: ok ? undefined : [message], summary: parsed.summary, batch: batchFromSummary(parsed.summary) || state.batch, progress: { percent: 100, stage: ok ? '已完成' : '已停止', detail: message } })
+    sendJson(res, ok ? 200 : 422, { ok, message, summary: parsed.summary, batch: state.batch, output: result.output || undefined })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     updateState({ phase: 'idle', finishedAt: new Date().toISOString(), ok: false, message, errors: [message], progress: { percent: 100, stage: '已停止', detail: message } })

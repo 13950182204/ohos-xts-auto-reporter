@@ -23,9 +23,14 @@ const VERIFICATION_MARKERS = /验证码|captcha|短信验证|手机验证|安全
 const REPORT_RELATION_MAX_WAIT_MS = 2 * 60 * 1000;
 const REPORT_RELATION_POLL_INTERVAL_MS = 1000;
 const REPORT_RELATION_INITIALIZE_RETRY_MS = 30 * 1000;
+let progressContext = {};
+
+export function setProgressContext(context = {}) {
+  progressContext = { ...context };
+}
 
 function reportProgress(percent, stage, detail = '') {
-  console.log(`PHASE2_PROGRESS=${JSON.stringify({ percent, stage, detail })}`);
+  console.log(`PHASE2_PROGRESS=${JSON.stringify({ percent, stage, detail, ...progressContext })}`);
 }
 
 class ApplicationError extends Error {
@@ -989,7 +994,7 @@ async function main() {
       const result = await processRecord(page, artifacts, record, options.mode, input.sourcePath);
       results.push(result);
       if (options.mode === 'save' && ['saved', 'skipped'].includes(result.status)) {
-        reportProgress(100, '处理完成', '第二阶段草稿和附件已保存并完成回读。');
+        reportProgress(100, '处理完成', '评测资料和附件已保存并完成回读。');
         const assessmentNumberReady = isAssessmentNumber(result.assessmentNumber);
         await writeWorkbookState(input.sourcePath, {
           applicationId: result.applicationId,
@@ -1032,6 +1037,8 @@ async function main() {
     await browser?.close();
   }
 }
+
+export { artifactDirectory, processRecord, readPhase2Workbook, reportProgress, signIn, writeResult };
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();

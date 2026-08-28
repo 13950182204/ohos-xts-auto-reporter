@@ -12,7 +12,7 @@ import { registerBrowserUploadTool } from './upload-tool.ts'
  *   由模型用 browser_* 工具驱动真实浏览器窗口执行，只存草稿绝不提交）；
  * - 注册 browser_upload 工具：文件上传（依赖 @yeesy369/dsh-browser-playwright
  *   的 DSH 定制补丁 setInputFiles，见仓库 docs/browser-upload-patch.md）；
- * - 注册第二阶段设置 namespace 与 Host 路由；浏览器半区在设置页的「XTS报告上传」独立区段提供预检和草稿保存卡片。
+ * - 注册第二阶段设置 namespace 与 Host 路由；浏览器半区在设置页的「XTS报告上传」独立区段提供预检和资料处理卡片。
  *
  * 浏览器依赖：@yeesy369/dsh-browser-playwright 等三个插件（已在 web profile）。
  */

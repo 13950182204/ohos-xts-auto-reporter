@@ -194,6 +194,53 @@ export async function ensureWorkbookWritable(workbookPath, { attempts = 15, inte
 
 export const PHASE2_SELF_CHECK_NAME = 'OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx';
 export const PHASE2_REPORT_NAME = 'report.zip';
+export const PHASE2_WORKBOOK_NAME = 'OpenHarmony兼容性申请_第二阶段.xlsx';
+
+function isGeneratedPhase2Directory(name) {
+  return name.startsWith('OpenHarmony兼容性申请_第二阶段_结果_') || name.startsWith('OpenHarmony兼容性批量结果_');
+}
+
+export async function discoverPhase2Workbooks(inputPath) {
+  const sourcePath = toWslPath(inputPath);
+  if (!isAbsoluteLocalPath(sourcePath)) {
+    throw new WorkbookValidationError(['批量目录或工作簿路径必须为绝对路径。']);
+  }
+  let sourceStat;
+  try {
+    sourceStat = await fs.stat(sourcePath);
+  } catch {
+    throw new WorkbookValidationError([`批量目录或工作簿不存在: ${sourcePath}`]);
+  }
+  if (sourceStat.isFile()) {
+    if (path.basename(sourcePath) !== PHASE2_WORKBOOK_NAME || path.extname(sourcePath).toLowerCase() !== '.xlsx') {
+      throw new WorkbookValidationError([`工作簿文件名必须为 ${PHASE2_WORKBOOK_NAME}。`]);
+    }
+    return {
+      mode: 'single',
+      rootPath: path.dirname(sourcePath),
+      items: [{ directory: path.dirname(sourcePath), workbookPath: sourcePath, name: path.basename(path.dirname(sourcePath)) }],
+      skipped: [],
+    };
+  }
+  if (!sourceStat.isDirectory()) {
+    throw new WorkbookValidationError([`输入路径既不是目录也不是 .xlsx 工作簿: ${sourcePath}`]);
+  }
+  const entries = await fs.readdir(sourcePath, { withFileTypes: true });
+  const directories = entries.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && !isGeneratedPhase2Directory(entry.name)).sort((left, right) => left.name.localeCompare(right.name));
+  const items = [];
+  const skipped = [];
+  for (const entry of directories) {
+    const directory = path.join(sourcePath, entry.name);
+    const workbookPath = path.join(directory, PHASE2_WORKBOOK_NAME);
+    const exists = await fs.stat(workbookPath).then((stat) => stat.isFile()).catch(() => false);
+    if (exists) {
+      items.push({ directory, workbookPath, name: entry.name });
+    } else {
+      skipped.push({ directory, name: entry.name, reason: `未找到 ${PHASE2_WORKBOOK_NAME}` });
+    }
+  }
+  return { mode: 'batch', rootPath: sourcePath, items, skipped };
+}
 
 export function derivePhase2AttachmentPaths(workbookPath) {
   const input = normalizeText(workbookPath);
