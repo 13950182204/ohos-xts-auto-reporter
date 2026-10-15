@@ -64,22 +64,73 @@ python3 skills/openharmony-waiver-draft/scripts/process_directory.py \
 
 ## 安装
 
+插件有两种宿主，**两套 profile 各装各的**（互不影响）。
+
+### WSL 侧 `dsh web`（profile `web`）
+
 ```bash
 pnpm build
 dsh plugin --profile web add link:/home/cx/os/ohos-xts-auto-reporter
 ```
 
-### 安装或更新后必须重启
+### DSH Desktop（Windows，profile `desktop`）
 
-DSH 会在 Web 服务启动时读取插件 Host bundle 和 `dsh.client` 清单；安装、重新构建或更新 link 插件后，单纯刷新设置页不会重新加载插件。执行：
+桌面 profile 由 Electron 应用**独占管理**，`dsh plugin --profile desktop …` 会被直接拒绝
+（`profile "desktop" is managed exclusively by the Electron application`）。用仓库内助手安装，
+在 Windows 侧运行 Node 20+（也可以从 WSL 直接调用桌面自带运行时，见脚本头注释）：
 
 ```bash
-~/.dsh/restart-dsh-web.sh
+node <repo>/scripts/desktop-reinstall.mjs            # 默认 --profile desktop
+node <repo>/scripts/desktop-reinstall.mjs --dry-run  # 干跑，零写盘
 ```
 
-如果没有该脚本，则停止当前 `dsh web` 后重新启动（需要浏览器能力时带上 `DISPLAY=:0`），再刷新浏览器页面。重启完成后打开「设置」，在“GitLab 凭据”下面点击「XTS报告上传」即可。
+助手做四件事，并全部自检：
 
-**依赖**（浏览器能力）：`@yeesy369/dsh-browser-playwright`、`@yeesy369/dsh-tool-browser`、`@yeesy369/dsh-web-permission` 三个插件需先安装，且 dsh web 以带显示环境启动（`DISPLAY=:0 dsh web`，见 `~/.dsh/restart-dsh-web.sh`）。第二阶段 Host 使用仓库内 Playwright；若本机没有对应浏览器缓存，先执行 `pnpm exec playwright install chromium`。重启后生效。
+1. 按**内容哈希**打包 tarball 到 `~/.dsh/plugins/`（`<name>-<version>-<sha256 前 8 位>.tgz`）。
+   同名 tarball 换了内容时 pnpm 不会重新解包（`install` 与 `--force` 都报 “Already up to date”），
+   文件名带哈希才能保证装到的是新代码。
+2. 把依赖与 bundle 写进 profile 清单，先备份 `package.json.bak-xts-reinstall`。
+3. 用桌面自带 pnpm 安装；PATH 只补 node 的 bin 目录（**绝不加 Node 根目录**，否则
+   `bash.exe`/`wsl.exe` 会顶掉 WSL 的 bash）。
+4. 自检：版本一致、`lib/` 与 `scripts/` 产物齐全、非 DSH 依赖可解析、bundles 含本插件。
+
+### 安装或更新后必须重启
+
+DSH 在宿主启动时读取插件 Host bundle 与 `dsh.client` 清单；安装、重建或更新插件后，刷新页面不会重载。
+
+- WSL 侧：`~/.dsh/restart-dsh-web.sh`（或停止后重启 `dsh web`；需要浏览器能力时带 `DISPLAY=:0`）。
+- 桌面侧：退出并重新打开 DSH Desktop。
+
+重启后打开「设置」，在“GitLab 凭据”下面点击「XTS报告上传」。
+
+**依赖（第二阶段提交路径）**：Host 用仓库内 Playwright 启动 headless Chromium，本机没有浏览器缓存时先执行
+`pnpm exec playwright install chromium`（WSL 与 Windows 各需一次）。桌面侧豁免草稿（`browser_*` 工具）
+不可用，见下节。
+
+## 宿主差异（WSL web / DSH Desktop）
+
+同一份代码在两套宿主上运行，差异集中在三处，都已在代码里处理并有回归测试：
+
+| 差异 | WSL 侧 `dsh web` | DSH Desktop | 处理 |
+|---|---|---|---|
+| 脚本子进程 | `process.execPath` 是真 Node | 宿主是 Electron，`process.execPath` 是 `DeepSeek Harness.exe`；直接 spawn 会**再开一个 GUI 实例**（预检/保存表现为无输出） | 子进程环境注入 `ELECTRON_RUN_AS_NODE=1`（`src/phase2-routes.ts`） |
+| 路径语义 | `D:\ohos\x` → `/mnt/d/ohos/x` | 相反：`/mnt/d/ohos/x` → `D:/ohos/x`，Windows 路径保持原样 | `toHostPath()` 按 `process.platform` 分支；`splitPaths()` 逐个元素转换（`scripts/phase2_logic.mjs`） |
+| 设置服务 | 曾用 `ctx.settings.register` + 浏览器侧 `settingsScope` | 0.1.2-rc.1 删掉了 `settingsNamespace`，0.2.0-rc.2 更是整块换成 `SettingsForms`、浏览器侧连 `settingsScope` 都没有 | 设置数据面**自持**：`~/.dsh/ohos-xts-auto-reporter.json`（0600）+ 自有路由 `/api/ohos-xts-auto-reporter/settings` |
+
+> 前两代设置 API 的消失是**链接期**失败：`import { settingsNamespace } from '@deepseek-ai/dsh-settings'`
+> 会让整个插件在两个在役运行时上都无法加载（`does not provide an export named 'settingsNamespace'`），
+> 设置页卡片、skill、预检一起消失且没有明显报错。因此本插件不再 import `dsh-settings` 的任何**值**。
+
+### 设置存储与迁移
+
+- 存储：`~/.dsh/ohos-xts-auto-reporter.json`（0600，含账号密码）。GET 只回 `hasPassword`，不回显密码；
+  POST 传空密码表示保留原值。
+- 首次启动（存储文件不存在时）按顺序迁移一次：`~/.dsh/settings.yaml` 的 `ohos-xts-auto-reporter` 段 →
+  cordis 配置 `phase2` 里的默认值。文件已存在则不再被任何来源覆盖。
+- 桌面侧豁免草稿半区依赖 `@yeesy369/dsh-browser-playwright` 提供的 `browser_*` 工具，该插件当前版本
+  不满足桌面运行时 0.2.0-rc.2 的 peer 门禁，因此桌面 profile 不装它：`browser_upload` 工具跳过注册
+  （skill 仍注册，第二阶段卡片/预检/提交路径不受影响）。`browser` 因此是**可选注入**
+  （`ctx.inject(['browser'], …)`），不写进必需 `inject`——否则整个插件在桌面侧永不加载。
 
 ## 开发
 
@@ -109,7 +160,7 @@ pnpm test:python    # process_directory.py 解析单测
 ## 安全边界
 
 - **提交铁律（最高优先级）**：插件绝不允许自行提交测评申请——即使对话中明确要求"提交"也不允许；只能保存/暂存草稿，最终提交必须由用户在平台页面上人工完成（见 SKILL.md「提交铁律」）；
-- 凭据只从 DSH secret 设置或环境变量读取，绝不写入 JSON/日志/截图/仓库；
+- 凭据存放在 `~/.dsh/ohos-xts-auto-reporter.json`（0600，含账号密码）或环境变量 `OH_USERNAME`/`OH_PASSWORD`，绝不写入日志/截图/仓库；设置接口只回 `hasPassword`，不回显密码；
 - OAuth 只点精确 `授权`，不点 `拒绝`/`切换登录`；
 - 任何不明确的保存结果都停止并报告，不重试提交类操作。
 - 第二阶段 Host 路由调用联系人、产品定义、软件定义和 XTS/PCS 报告关联保存接口；为建立报告关联，软件定义会以平台的报告上传阶段语义保存。镜像上传接口暂不调用。绝不调用样机寄送、确认提交或正式提交动作。

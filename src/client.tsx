@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useState, useSyncExternalStore, type ChangeEvent } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { createElement } from 'react'
-import type { ClientContext, SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
-import type { Phase2Settings } from './config.ts'
 
-const NAMESPACE = 'ohos-xts-auto-reporter'
 const DEFAULT_PHONE = '13950182204'
 const DEFAULT_EMAIL = '102438@dnake.com'
 
-type CardProps = { scope: SettingsScope<Phase2Settings> }
+/** 服务端 /settings 返回的业务值（密码永不回显，只回 hasPassword）。 */
+type SettingsView = {
+  username?: string
+  workbookPath?: string
+  selfCheckPath?: string
+  reportPath?: string
+  contactPhone?: string
+  contactEmail?: string
+}
 type ResponseState = {
   ok: boolean
   message?: string
@@ -17,6 +23,8 @@ type ResponseState = {
   summary?: Record<string, unknown>
   batch?: Record<string, unknown>
   state?: Record<string, unknown>
+  settings?: SettingsView
+  hasPassword?: boolean
 }
 
 async function request(path: string, method: 'GET' | 'POST', body?: Record<string, unknown>): Promise<ResponseState> {
@@ -66,28 +74,42 @@ function buttonStyle(primary = false): Record<string, string> {
   }
 }
 
-export function ReporterSettingsCard({ scope }: CardProps) {
-  const subscribe = useMemo(() => scope.subscribe.bind(scope), [scope])
-  const readSnapshot = useMemo(() => scope.getSnapshot.bind(scope), [scope])
-  const snapshot = useSyncExternalStore(subscribe, readSnapshot, readSnapshot)
-  const initial = snapshot.value ?? {}
-  const [username, setUsername] = useState(displayValue(initial.username))
+/**
+ * XTS 报告上传卡片。
+ *
+ * 数据面全部走本插件自己的 Host 路由（`/api/ohos-xts-auto-reporter/settings`），
+ * **不用 `ctx.settingsScope`**：该服务只存在于 DSH 0.1.x，0.2.0-rc.2（DSH Desktop）
+ * 的浏览器半区已无此服务，注入它会让整个卡片永不挂载。
+ * 组件不再接收任何注入 props，注册时也无需 `inject`。
+ */
+export function ReporterSettingsCard() {
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [workbookPath, setWorkbookPath] = useState(displayValue(initial.workbookPath))
+  const [hasPassword, setHasPassword] = useState(false)
+  const [workbookPath, setWorkbookPath] = useState('')
   const [mirrorPath] = useState('')
-  const [contactPhone, setContactPhone] = useState(displayValue(initial.contactPhone) || DEFAULT_PHONE)
-  const [contactEmail, setContactEmail] = useState(displayValue(initial.contactEmail) || DEFAULT_EMAIL)
+  const [contactPhone, setContactPhone] = useState(DEFAULT_PHONE)
+  const [contactEmail, setContactEmail] = useState(DEFAULT_EMAIL)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ResponseState | null>(null)
   const [hostState, setHostState] = useState<ResponseState | null>(null)
-  const writable = snapshot.writable && snapshot.status !== 'unavailable'
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   useEffect(() => {
-    const value = scope.getSnapshot().value ?? {}
-    if (value.workbookPath !== undefined) setWorkbookPath(displayValue(value.workbookPath))
-    if (value.contactPhone !== undefined) setContactPhone(displayValue(value.contactPhone))
-    if (value.contactEmail !== undefined) setContactEmail(displayValue(value.contactEmail))
-  }, [scope, snapshot.value])
+    let active = true
+    void (async () => {
+      const response = await request('settings', 'GET')
+      if (!active) return
+      const value = response.settings ?? {}
+      setUsername(displayValue(value.username))
+      setWorkbookPath(displayValue(value.workbookPath))
+      if (value.contactPhone) setContactPhone(displayValue(value.contactPhone))
+      if (value.contactEmail) setContactEmail(displayValue(value.contactEmail))
+      setHasPassword(response.hasPassword === true)
+      setSettingsLoaded(response.ok)
+    })()
+    return () => { active = false }
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -122,26 +144,22 @@ export function ReporterSettingsCard({ scope }: CardProps) {
   const attachments = firstResult?.attachments as Record<string, Record<string, unknown>> | undefined
 
   async function saveSettings(): Promise<boolean> {
-    if (!writable) {
-      setResult({ ok: false, message: 'DSH 设置当前不可写，请在本机 Web GUI 中打开插件卡片。' })
+    const response = await request('settings', 'POST', {
+      username: username.trim(),
+      workbookPath: workbookPath.trim(),
+      mirrorPath: '',
+      contactPhone: contactPhone.trim() || DEFAULT_PHONE,
+      contactEmail: contactEmail.trim() || DEFAULT_EMAIL,
+      // 空密码 = 保留已保存的密码；只有用户真的输入了新密码才提交。
+      ...(password ? { password } : {}),
+    })
+    if (!response.ok) {
+      setResult({ ok: false, message: response.message || '设置保存失败。' })
       return false
     }
-    const writes: Array<Promise<void>> = [
-      scope.set('workbookPath', workbookPath.trim()),
-      scope.set('mirrorPath', ''),
-      scope.set('contactPhone', contactPhone.trim() || DEFAULT_PHONE),
-      scope.set('contactEmail', contactEmail.trim() || DEFAULT_EMAIL),
-    ]
-    if (username.trim()) writes.push(scope.set('username', username.trim()))
-    if (password) writes.push(scope.set('password', password))
-    try {
-      await Promise.all(writes)
-      setPassword('')
-      return true
-    } catch {
-      setResult({ ok: false, message: '设置保存失败。' })
-      return false
-    }
+    if (password) setHasPassword(true)
+    setPassword('')
+    return true
   }
 
   async function preflight(): Promise<void> {
@@ -192,8 +210,8 @@ export function ReporterSettingsCard({ scope }: CardProps) {
   createElement('label', { style: labelStyle() }, '企业联系电话', createElement('input', { type: 'tel', value: contactPhone, onChange: onText(setContactPhone), disabled: busy, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '企业邮箱', createElement('input', { type: 'email', value: contactEmail, onChange: onText(setContactEmail), disabled: busy, style: inputStyle() }))),
   createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' } },
-    createElement('button', { type: 'button', onClick: () => { void preflight() }, disabled: busy || !writable, style: buttonStyle(false) }, '预检'),
-    createElement('button', { type: 'button', onClick: () => { void saveDraft() }, disabled: busy || !writable, style: buttonStyle(true) }, busy ? '处理中…' : '评测资料提交')),
+    createElement('button', { type: 'button', onClick: () => { void preflight() }, disabled: busy, style: buttonStyle(false) }, '预检'),
+    createElement('button', { type: 'button', onClick: () => { void saveDraft() }, disabled: busy, style: buttonStyle(true) }, busy ? '处理中…' : '评测资料提交')),
   createElement('p', { style: { fontSize: '12px', lineHeight: 1.5, opacity: 0.68, margin: '12px 0 0' } }, '镜像上传暂未启用；不会进入样机寄送或提交申请。'),
   showProgress ? createElement('div', { style: { marginTop: '14px' } },
     createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '6px', fontSize: '12px' } },
@@ -235,21 +253,28 @@ export function ReporterSettingsCard({ scope }: CardProps) {
     firstResult?.assessmentNumber ? createElement('div', null, `测评编号：${String(firstResult.assessmentNumber)}`) : null,
     firstResult?.status ? createElement('div', null, `处理结果：${String(firstResult.status)}`) : null,
     attachments?.mirror?.fileName ? createElement('div', null, `镜像：${String(attachments.mirror.fileName)}`) : null) : null,
-  !writable ? createElement('div', { role: 'status', style: { marginTop: '8px', color: '#b45309', fontSize: '12px' } }, '设置服务不可写或未暴露；请使用本机 DSH Web GUI。') : null)
+  !settingsLoaded ? createElement('div', { role: 'status', style: { marginTop: '8px', color: '#b45309', fontSize: '12px' } }, '读不到插件设置（Host 路由不可达）；保存与预检会失败。请确认 DSH 宿主已加载本插件。') : null)
 }
 
-export const inject = ['slots', 'settingsScope']
+/**
+ * 必需注入：只要槽宿主。**不要加 `settingsScope`**——0.2.0-rc.2 的浏览器半区没有该服务，
+ * 写进必需注入会让整个卡片（乃至浏览器半区）永不 apply。
+ * `locale` 也省略：本卡片的中文文案是字面量，不依赖字典。
+ */
+export const inject = ['slots']
 
 export function apply(ctx: ClientContext): void {
-  const scope = ctx.settingsScope.bind<Phase2Settings>({ namespace: NAMESPACE })
-  ctx.slots.inject('settings.section', () => {
-    const unregister = ctx.slots.register({
-      name: 'settings.section',
-      id: 'ohos-xts-auto-reporter',
-      order: 35,
-      label: () => 'XTS报告上传',
-      inject: () => ({ scope }),
-    }, ReporterSettingsCard)
-    return () => unregister()
-  })
+  try {
+    ctx.slots.inject('settings.section', () => {
+      const unregister = ctx.slots.register({
+        name: 'settings.section',
+        id: 'ohos-xts-auto-reporter',
+        order: 35,
+        label: () => 'XTS报告上传',
+      }, ReporterSettingsCard)
+      return () => unregister()
+    })
+  } catch (error) {
+    console.warn('[ohos-xts-auto-reporter] settings section mount failed:', error)
+  }
 }

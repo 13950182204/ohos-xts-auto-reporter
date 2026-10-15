@@ -3,6 +3,16 @@ node_modules/
 lib/
 dist/
 
+# 例外：**分发入口 lib/** 必须入库（!lib/ 与 !lib/** 两行都要）。
+# 理由：`main` 指向 `lib/index.js`，而 DSH Desktop 的「添加插件」用 `github:owner/repo`
+# 直接从 GitHub 安装——git 安装不会构建（仓库里没有 lib 时，装到的包入口指向不存在的
+# 文件，插件静默失效）。加 `prepare` 也不可行，已在姊妹仓库
+# openharmony-debug-test-pipeline 实测三重失败（ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED、
+# 放行后转去跑 npm install、allowBuilds 键带 commit 哈希）。提交产物是实测唯一可行路径。
+# 代价：改 src/ 后必须 `pnpm run build` 并把 lib/ 一起提交，否则仓库里是旧代码。
+!lib/
+!lib/**
+
 # 运行期状态（不入库）
 *.log
 pipeline-state.json

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_WORKBOOK_PATH = 'D:\\ohos\\XTS6.1\\OpenHarmony兼容性申请_第二阶段.xlsx';
 export const SHEETS = Object.freeze({
@@ -151,10 +152,27 @@ export function assertOnlySafeSaveLabels(labels) {
   }
 }
 
-export function toWslPath(value) {
+/**
+ * 把用户填写的路径归一化成**当前宿主进程能直接打开**的形式。
+ *
+ * 本插件有两种宿主，路径语义相反，写死任何一种都会在另一种上静默全废
+ * （表现为 ENOENT / 读到不存在的目录）：
+ * - WSL 侧 `dsh web`：脚本跑在 Linux，`D:\ohos\x` 必须变成 `/mnt/d/ohos/x`；
+ * - DSH Desktop：脚本跑在 Windows（Electron 的 node 模式），`/mnt/d/ohos/x`
+ *   必须变回 `D:/ohos/x`，而 `D:\ohos\x` 保持 Windows 形式（正斜杠在 Node 的
+ *   Windows 实现里等价）。
+ *
+ * 判据是 `process.platform`，不是输入长什么样——同一个输入串在两种宿主下要求
+ * 不同的结果。`platform` 参数只为测试可注入（两种宿主无法在同一台机器上跑）。
+ */
+export function toHostPath(value, platform = process.platform) {
   const input = normalizeText(value).replaceAll('\\', '/');
-  const windowsPath = /^([a-zA-Z]):\/(.+)$/.exec(input);
-  return windowsPath ? `/mnt/${windowsPath[1].toLowerCase()}/${windowsPath[2]}` : input;
+  const windowsDrive = /^([a-zA-Z]):\/(.*)$/.exec(input);
+  const wslMount = /^\/mnt\/([a-zA-Z])\/(.*)$/.exec(input);
+  if (platform === 'win32') {
+    return wslMount ? `${wslMount[1].toUpperCase()}:/${wslMount[2]}` : input;
+  }
+  return windowsDrive ? `/mnt/${windowsDrive[1].toLowerCase()}/${windowsDrive[2]}` : input;
 }
 
 function workbookLockPath(sourcePath) {
@@ -162,7 +180,7 @@ function workbookLockPath(sourcePath) {
 }
 
 export async function ensureWorkbookWritable(workbookPath, { attempts = 15, intervalMs = 1000, onRetry } = {}) {
-  const sourcePath = toWslPath(workbookPath);
+  const sourcePath = toHostPath(workbookPath);
   let lastError;
   for (let attempt = 0; attempt <= attempts; attempt += 1) {
     let handle;
@@ -201,7 +219,7 @@ function isGeneratedPhase2Directory(name) {
 }
 
 export async function discoverPhase2Workbooks(inputPath) {
-  const sourcePath = toWslPath(inputPath);
+  const sourcePath = toHostPath(inputPath);
   if (!isAbsoluteLocalPath(sourcePath)) {
     throw new WorkbookValidationError(['批量目录或工作簿路径必须为绝对路径。']);
   }
@@ -253,7 +271,7 @@ export function derivePhase2AttachmentPaths(workbookPath) {
       mirrorPath: '',
     };
   }
-  const directory = path.dirname(toWslPath(input));
+  const directory = path.dirname(toHostPath(input));
   return {
     selfCheckPath: path.join(directory, PHASE2_SELF_CHECK_NAME),
     reportPath: path.join(directory, 'report', PHASE2_REPORT_NAME),
@@ -261,16 +279,24 @@ export function derivePhase2AttachmentPaths(workbookPath) {
   };
 }
 
-export function isAbsoluteLocalPath(value) {
-  return path.posix.isAbsolute(toWslPath(value));
+/**
+ * 绝对路径判定同样必须跟随宿主：Windows 宿主下 `D:/ohos/x` 是绝对路径而
+ * POSIX 的 `path.posix.isAbsolute` 判 false（反之 `/mnt/d/x` 在 Windows 下也判 false）。
+ */
+export function isAbsoluteLocalPath(value, platform = process.platform) {
+  const candidate = toHostPath(value, platform);
+  return platform === 'win32' ? path.win32.isAbsolute(candidate) : path.posix.isAbsolute(candidate);
 }
 
 export function isAssessmentNumber(value) {
   return /^OHC\d+$/.test(normalizeText(value));
 }
 
-export function splitPaths(value) {
-  return normalizeText(value).split(/[;；\n]/).map(toWslPath).filter(Boolean);
+export function splitPaths(value, platform = process.platform) {
+  // 必须显式包一层箭头函数：`.map(toHostPath)` 会把数组下标当作第二参数传进去，
+  // 而 toHostPath 的第二参数是 platform —— 索引 0/1/2 永远不等于 'win32'，
+  // 于是 Windows 宿主上被静默当成 Linux 处理（外观图/PCID 路径全变成 /mnt/...）。
+  return normalizeText(value).split(/[;；\n]/).map((item) => toHostPath(item, platform)).filter(Boolean);
 }
 
 async function validateAttachment(errors, label, value, extensions, fileExists) {
@@ -279,7 +305,7 @@ async function validateAttachment(errors, label, value, extensions, fileExists) 
     errors.push(`缺少${label}`);
     return;
   }
-  const localPath = toWslPath(input);
+  const localPath = toHostPath(input);
   if (!isAbsoluteLocalPath(localPath)) {
     errors.push(`${label}必须为绝对路径`);
     return;
@@ -304,7 +330,10 @@ export async function validatePhase2Attachments({ selfCheckPath, reportPath, mir
 export function loadExcelJs() {
   const runtime = process.env.OH_AUTOMATION_TOOL_DIR || process.env.OH_WAIVER_TOOL_DIR;
   if (runtime) return createRequire(path.join(runtime, 'package.json'))('exceljs');
-  return createRequire(path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'package.json'))('exceljs');
+  // 必须用 fileURLToPath：`new URL(import.meta.url).pathname` 在 Windows 上给出
+  // `/C:/…`（多一个前导斜杠）且对空格/中文做百分号编码，createRequire 会拿到不存在的路径。
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return createRequire(path.join(here, '..', 'package.json'))('exceljs');
 }
 
 function cellText(cell) {
@@ -351,7 +380,7 @@ function recordFromValues(sheetName, values, state = {}) {
         withScreen: normalizeText(values[`device${number}WithScreen`]),
         versionId: normalizeText(values[`device${number}VersionId`]),
         versionHash: normalizeText(values[`device${number}VersionHash`]),
-        pcidScPath: toWslPath(values[`device${number}PcidScPath`]),
+        pcidScPath: toHostPath(values[`device${number}PcidScPath`]),
       })),
     };
   }
@@ -365,7 +394,7 @@ function recordFromValues(sheetName, values, state = {}) {
     withScreen: normalizeText(values.withScreen),
     versionId: normalizeText(values.versionId),
     versionHash: normalizeText(values.versionHash),
-    pcidScPath: toWslPath(values.pcidScPath),
+    pcidScPath: toHostPath(values.pcidScPath),
     ...(sheetName === SHEETS.commercial ? {
       category: normalizeText(values.category),
       deviceModel: normalizeText(values.deviceModel),
@@ -634,7 +663,7 @@ export async function validateRecord(record, { fileExists = async (filePath) => 
 
 export async function readPhase2Workbook(workbookPath, options = {}) {
   if (!workbookPath) throw new WorkbookValidationError(['没有提供对应的申请表格文件，已停止执行。']);
-  const sourcePath = toWslPath(workbookPath);
+  const sourcePath = toHostPath(workbookPath);
   if (!isAbsoluteLocalPath(sourcePath) || path.extname(sourcePath).toLowerCase() !== '.xlsx') {
     throw new WorkbookValidationError(['申请表格文件必须为绝对路径的 .xlsx 文件。']);
   }
@@ -787,7 +816,7 @@ async function writeSingleDeviceWorkbook(destination, record) {
 }
 
 export async function createPhase2Workbook(outputPath = DEFAULT_WORKBOOK_PATH) {
-  const destination = toWslPath(outputPath);
+  const destination = toHostPath(outputPath);
   if (!isAbsoluteLocalPath(destination) || path.extname(destination).toLowerCase() !== '.xlsx') throw new Error('输出路径必须为绝对路径的 .xlsx 文件');
   let record = blankRecord(SHEETS.board);
   try {
@@ -807,7 +836,7 @@ export async function createPhase2Workbook(outputPath = DEFAULT_WORKBOOK_PATH) {
 }
 
 export async function writeWorkbookState(workbookPath, patch) {
-  const { sourcePath, record } = await readWorkbook(toWslPath(workbookPath));
+  const { sourcePath, record } = await readWorkbook(toHostPath(workbookPath));
   Object.assign(record, {
     applicationId: patch.applicationId ?? record.applicationId,
     assessmentNumber: patch.assessmentNumber ?? record.assessmentNumber,

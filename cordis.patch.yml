@@ -1,9 +1,13 @@
 # ohos-xts-auto-reporter bundle patch
 #
-# 安装：dsh plugin --profile <name> add ohos-xts-auto-reporter
+# WSL 侧安装：dsh plugin --profile web add link:<repo>
+# DSH Desktop 安装：node <repo>/scripts/desktop-reinstall.mjs（桌面 profile 由桌面应用独占管理，
+# CLI 拒绝 `dsh plugin --profile desktop …`；助手会顺带登记依赖与 bundles 并自检）。
 # 插件加载后注册 vendored skill：openharmony-waiver-draft（豁免草稿自动填写）。
 # 浏览器操作依赖 @yeesy369/dsh-browser-playwright 提供的 browser_* 工具
 # （需先安装并重启 dsh；dsh web 需带 DISPLAY 环境以便弹出浏览器窗口）。
+# 该服务为**可选**注入：桌面 profile 没有浏览器插件时跳过 browser_upload 工具，
+# 插件其余能力（设置卡片/预检/提交路径）照常可用。
 - insert:
     - id: ohos-xts-reporter
       name: 'ohos-xts-auto-reporter'

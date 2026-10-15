@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { Config, Phase2Settings } from '../src/config.ts'
-import { apply as applyClient } from '../src/client.tsx'
+import { apply as applyClient, inject } from '../src/client.tsx'
 import { registerPhase2Settings } from '../src/phase2-routes.ts'
 
 const execFile = promisify(execFileCallback)
@@ -21,36 +21,61 @@ describe('phase2 settings', () => {
     expect(JSON.stringify(Config.toJSON())).toContain('selfCheckPath')
   })
 
-  it('registers the phase2 namespace through the Host settings service', () => {
-    let captured: any
-    const ctx = { settings: { register: (namespace: unknown, schema: unknown, options: unknown) => {
-      captured = { namespace, schema, options }
-      return { get: () => ({}) }
-    } } } as any
-    registerPhase2Settings(ctx, {})
-    expect(String(captured.namespace)).toContain('ohos-xts-auto-reporter')
-    expect(captured.options.base.contactPhone).toBe('13950182204')
-    expect(captured.options.base.contactEmail).toBe('102438@dnake.com')
+  it('keeps the settings plane self-hosted so no dsh-settings runtime import survives', () => {
+    const source = readFileSync(join(process.cwd(), 'src', 'phase2-routes.ts'), 'utf8')
+    // 值导入 `settingsNamespace` 会在 0.1.2-rc.1 / 0.2.0-rc.2 上让插件链接期失败；
+    // 只允许类型导入（会被擦除）。
+    expect(source).not.toMatch(/^import \{[^}]*\} from '@deepseek-ai\/dsh-settings'$/m)
+    expect(source).toContain("import type { Phase2Settings as Phase2SettingsValue }")
+  })
+
+  it('seeds the store from settings.yaml, then lets user values win', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'ohos-settings-'))
+    const file = join(directory, 'settings.json')
+    const legacy = join(directory, 'settings.yaml')
+    try {
+      // 旧版把同一批字段写在 ~/.dsh/settings.yaml 的 ohos-xts-auto-reporter section 下。
+      await writeFile(legacy, 'ohos-xts-auto-reporter:\n  workbookPath: D:\\ohos\\legacy\n  username: legacy@example.com\n  password: legacy-secret\n', 'utf8')
+      const ctx = { logger: { info: () => {}, warn: () => {} } } as any
+      const plane = registerPhase2Settings(ctx, { contactPhone: '13950182204', contactEmail: 'a@b.c', workbookPath: 'D:/ohos/config' }, { settingsFile: file, legacyFile: legacy })
+      // settings.yaml 的值优先于 cordis 配置默认值。
+      expect(plane.get().workbookPath).toBe('D:\\ohos\\legacy')
+      expect(plane.get().username).toBe('legacy@example.com')
+      expect(plane.get().password).toBe('legacy-secret')
+      // 配置里的默认值补齐 settings.yaml 没有的字段。
+      expect(plane.get().contactPhone).toBe('13950182204')
+      await plane.merge({ workbookPath: 'D:/ohos/y', password: 'secret' })
+      expect(plane.get().workbookPath).toBe('D:/ohos/y')
+      expect(plane.get().password).toBe('secret')
+      // 存储已存在：重新注册不得被旧来源或 config 默认值覆盖。
+      const again = registerPhase2Settings(ctx, { workbookPath: 'D:/other' }, { settingsFile: file, legacyFile: legacy })
+      expect(again.get().workbookPath).toBe('D:/ohos/y')
+      expect(again.get().password).toBe('secret')
+      const mode = (await import('node:fs')).statSync(file).mode & 0o777
+      expect(mode & 0o077).toBe(0)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 })
 
 describe('phase2 client card registration', () => {
-  it('registers a settings section with a settings scope face', () => {
+  it('registers a settings section without requiring services rc.2 no longer has', () => {
     const registrations: any[] = []
-    const scope = { getSnapshot: () => ({ status: 'ready', writable: true, value: {}, user: {}, base: {}, revision: 1, mode: 'host' }) }
     const ctx = {
-      settingsScope: { bind: () => scope },
       slots: {
         inject: (_name: string, callback: () => unknown) => callback(),
         register: (definition: unknown) => { registrations.push(definition); return () => {} },
       },
     } as any
     applyClient(ctx)
+    expect(inject).toEqual(['slots'])
     expect(registrations[0].name).toBe('settings.section')
     expect(registrations[0].id).toBe('ohos-xts-auto-reporter')
     expect(registrations[0].label()).toBe('XTS报告上传')
     expect(registrations[0].order).toBe(35)
-    expect(registrations[0].inject().scope).toBe(scope)
+    // 数据面走自有路由，注册时不应再注入 settingsScope 之类的业务 props。
+    expect(registrations[0].inject).toBeUndefined()
   })
 })
 

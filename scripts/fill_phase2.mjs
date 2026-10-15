@@ -12,7 +12,7 @@ import {
   normalizeText,
   readPhase2Workbook,
   ensureWorkbookWritable,
-  toWslPath,
+  toHostPath,
   writeWorkbookState,
 } from './phase2_logic.mjs';
 
@@ -528,7 +528,7 @@ async function uploadPcidFile(page, filePath) {
   if (!filePath) {
     return '';
   }
-  const localPath = toWslPath(filePath);
+  const localPath = toHostPath(filePath);
   const body = await fs.readFile(localPath);
   const response = await platformRequest(page, '/fileUpload/uploadPCID', {
     method: 'POST',
@@ -544,7 +544,7 @@ async function uploadPcidFile(page, filePath) {
 }
 
 async function uploadTestReportFile(page, filePath, xts, systemType) {
-  const localPath = toWslPath(filePath);
+  const localPath = toHostPath(filePath);
   const body = await fs.readFile(localPath);
   const response = await platformRequest(page, '/certification/uploadTestReport', {
     method: 'POST',
@@ -559,7 +559,7 @@ async function uploadTestReportFile(page, filePath, xts, systemType) {
 }
 
 async function chooseMirrorFile(page, mirrorPath) {
-  const expectedName = path.basename(toWslPath(mirrorPath));
+  const expectedName = path.basename(toHostPath(mirrorPath));
   const response = await platformRequest(page, '/mirror/chooseMirrorList', {
     method: 'POST',
     data: { page: 1, limit: 100, sort: 'uploadTime' },
@@ -648,9 +648,9 @@ async function savePhase2Attachments(page, applicationId, record) {
 }
 
 async function phase2AttachmentDifferences(page, applicationId, record) {
-  const expectedReport = path.basename(toWslPath(process.env.OH_REPORT_PATH || ''));
-  const expectedSelfCheck = path.basename(toWslPath(process.env.OH_SELF_CHECK_PATH || ''));
-  const expectedMirror = path.basename(toWslPath(process.env.OH_MIRROR_PATH || ''));
+  const expectedReport = path.basename(toHostPath(process.env.OH_REPORT_PATH || ''));
+  const expectedSelfCheck = path.basename(toHostPath(process.env.OH_SELF_CHECK_PATH || ''));
+  const expectedMirror = path.basename(toHostPath(process.env.OH_MIRROR_PATH || ''));
   const current = await getApplication(page, applicationId);
   const relations = await platformRequest(page, `/certification/getCertificationReportRel?id=${encodeURIComponent(applicationId)}`, { method: 'GET' });
   const relation = Array.isArray(relations) ? relations[0] : null;

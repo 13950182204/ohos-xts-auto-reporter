@@ -3,11 +3,20 @@ import { dirname, join, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
-import { settingsNamespace, type SettingsScope } from '@deepseek-ai/dsh-settings'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
-import { PHASE2_SETTINGS_NAMESPACE, Phase2Settings, type Phase2Settings as Phase2SettingsValue } from './config.ts'
+import type { Phase2Settings as Phase2SettingsValue } from './config.ts'
+import { Phase2SettingsStore, readLegacySettings } from './settings-store.ts'
 
-type Phase2SettingsScope = SettingsScope<Phase2SettingsValue>
+/**
+ * 设置数据面。**刻意不 import `@deepseek-ai/dsh-settings` 的任何值**：
+ * 该包在 0.1.2-rc.1 / 0.2.0-rc.2 上删掉了 `settingsNamespace`（见 settings-store.ts 顶部注释），
+ * 值导入会让整个插件在链接期失败。类型导入（`import type`）会被擦除，保留无妨。
+ */
+export interface Phase2SettingsPlane {
+  get(): Phase2SettingsValue
+  merge(patch: Phase2SettingsValue): Promise<Phase2SettingsValue>
+}
+
 type ProgressState = {
   percent: number
   stage: string
@@ -84,6 +93,10 @@ function text(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
+function blankToUndefined(value: string | undefined): string | undefined {
+  return value !== undefined && value.trim() !== '' ? value.trim() : undefined
+}
+
 function redact(value: string, secrets: string[]): string {
   return secrets.filter(Boolean).reduce((result, secret) => result.replaceAll(secret, '[已隐藏]'), value)
 }
@@ -105,8 +118,14 @@ function attachmentSettings(workbook: string): Record<string, string> {
   }
 }
 
-function currentSettings(scope: Phase2SettingsScope): Phase2SettingsValue {
-  return scope.get()
+function currentSettings(settings: Phase2SettingsPlane): Phase2SettingsValue {
+  return settings.get()
+}
+
+/** 对外视图：密码只报「有没有」，绝不回显（与 DSH settings 的 secret 语义保持一致）。 */
+function settingsView(settings: Phase2SettingsValue): { settings: Omit<Phase2SettingsValue, 'password'>; hasPassword: boolean } {
+  const { password, ...rest } = settings
+  return { settings: rest, hasPassword: typeof password === 'string' && password !== '' }
 }
 
 function updateState(patch: Partial<RunState>): void {
@@ -233,6 +252,19 @@ function batchFromSummary(summary: Record<string, unknown> | undefined): BatchSt
   return batchFromValue(summary)
 }
 
+/**
+ * 执行处理脚本所用的 Node 运行时环境。
+ *
+ * DSH Desktop 的宿主跑在 Electron 里，`process.execPath` 指向
+ * `DeepSeek Harness.exe`：直接用它 spawn 脚本会**再开一个 GUI 实例**而不是执行脚本
+ * （预检/保存表现为无输出、超时）。Electron 认 `ELECTRON_RUN_AS_NODE=1`，同一个
+ * 二进制在该变量下退化成普通 Node。WSL 侧 `dsh web` 的 execPath 本来就是真 Node
+ * （`process.versions.electron` 为空），不加该变量。
+ */
+function scriptNodeEnv(): NodeJS.ProcessEnv {
+  return process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}
+}
+
 function runScript(
   script: string,
   args: string[],
@@ -244,7 +276,7 @@ function runScript(
 ): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
     const child = execFile(process.execPath, [join(scriptsDirectory(), script), ...args], {
-      env: { ...process.env, ...env },
+      env: { ...process.env, ...scriptNodeEnv(), ...env },
       maxBuffer: 2 * 1024 * 1024,
     }, (error, stdout, stderr) => {
       const code = typeof error?.code === 'number' ? error.code : error ? 1 : 0
@@ -311,7 +343,7 @@ function parseSave(output: string): { summary?: Record<string, unknown>; failure
   return {}
 }
 
-async function handlePreflight(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsScope): Promise<void> {
+async function handlePreflight(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsPlane): Promise<void> {
   if (req.method !== 'POST') return sendJson(res, 405, { ok: false, message: '只支持 POST。' })
   if (state.phase !== 'idle') return sendJson(res, 409, { ok: false, message: '已有任务正在执行，请等待当前任务结束。' })
   try {
@@ -339,7 +371,7 @@ async function handlePreflight(req: IncomingMessage, res: ServerResponse, settin
   }
 }
 
-async function handleSave(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsScope): Promise<void> {
+async function handleSave(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsPlane): Promise<void> {
   if (req.method !== 'POST') return sendJson(res, 405, { ok: false, message: '只支持 POST。' })
   if (state.phase !== 'idle') return sendJson(res, 409, { ok: false, message: '已有任务正在执行，请等待当前任务结束。' })
   try {
@@ -390,25 +422,96 @@ function handleStatus(req: IncomingMessage, res: ServerResponse): void {
   sendJson(res, 200, { ok: true, state: { ...state } })
 }
 
-export function registerPhase2Routes(ctx: Context, settings: Phase2SettingsScope): void {
+async function handleGetSettings(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsPlane): Promise<void> {
+  if (req.method !== 'GET') return sendJson(res, 405, { ok: false, message: '只支持 GET。' })
+  sendJson(res, 200, { ok: true, ...settingsView(settings.get()) })
+}
+
+/**
+ * 写设置。空字符串语义：
+ * - `password` 传空 → 保留原值（卡片不回显密码，不能靠空值清掉它）；
+ * - 其余字段传空 → 照写空串（调用方负责填默认联系人）。
+ */
+async function handleSaveSettings(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsPlane): Promise<void> {
+  if (req.method !== 'POST') return sendJson(res, 405, { ok: false, message: '只支持 POST。' })
+  try {
+    const body = await readBody(req)
+    const patch: Phase2SettingsValue = {}
+    for (const field of ['username', 'workbookPath', 'selfCheckPath', 'reportPath', 'mirrorPath', 'contactPhone', 'contactEmail'] as const) {
+      if (field in body) patch[field] = text(body[field])
+    }
+    const password = text(body.password)
+    if (password !== '') patch.password = password
+    const saved = await settings.merge(patch)
+    sendJson(res, 200, { ok: true, ...settingsView(saved) })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    sendJson(res, 400, { ok: false, message: `设置保存失败：${message}` })
+  }
+}
+
+export function registerPhase2Routes(ctx: Context, settings: Phase2SettingsPlane): void {
   const routes: WebRoute[] = [
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/status', handler: handleStatus },
+    // `/settings` 同一路径同时服务 GET（读）与 POST（写）：WebRoute 按路径唯一匹配，
+    // 方法分发必须在这个 handler 内部做（拆成两条同路径路由时只有第一条生效）。
+    {
+      kind: 'exact',
+      path: '/api/ohos-xts-auto-reporter/settings',
+      handler: (req, res) => {
+        const task = req.method === 'POST' ? handleSaveSettings(req, res, settings) : handleGetSettings(req, res, settings)
+        void task.catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error)
+          sendJson(res, 500, { ok: false, message })
+        })
+      },
+    },
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/preflight', handler: (req, res) => handlePreflight(req, res, settings) },
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/save', handler: (req, res) => handleSave(req, res, settings) },
   ]
+  // `/settings` 同时服务 GET（读）与 POST（写）：WebRoute 的 exact 只按路径分发，
+  // 方法判定在各 handler 内部完成。
   const disposers = routes.map((route) => ctx.webServer.register(route))
   ctx.effect(() => () => { for (const dispose of disposers) dispose() }, 'ohos-xts-auto-reporter: phase2 routes')
 }
 
-export function registerPhase2Settings(ctx: Context, config: Phase2SettingsValue = {}): Phase2SettingsScope {
-  return ctx.settings.register(settingsNamespace(PHASE2_SETTINGS_NAMESPACE), Phase2Settings, {
-    base: {
-      workbookPath: text(config.workbookPath),
-      selfCheckPath: text(config.selfCheckPath),
-      reportPath: text(config.reportPath),
-      mirrorPath: '',
-      contactPhone: text(config.contactPhone) || '13950182204',
-      contactEmail: text(config.contactEmail) || '102438@dnake.com',
+/** 存储与迁移路径可由调用方注入（profile 配置覆盖 / 测试隔离，避免误读真实 home）。 */
+export interface Phase2SettingsOptions {
+  /** 设置存储文件；缺省 `~/.dsh/ohos-xts-auto-reporter.json`。 */
+  settingsFile?: string
+  /** 旧版 settings.yaml 路径；仅用于一次性迁移。 */
+  legacyFile?: string
+}
+
+/**
+ * 组装设置数据面。
+ *
+ * 顺序很关键：`seedIfAbsent` 只在存储文件不存在时启用旧来源，且先看 settings.yaml
+ * （用户真实填过的值，含密码），再落 cordis 配置里的 base 默认值。
+ */
+export function registerPhase2Settings(ctx: Context, config: Phase2SettingsValue = {}, options: Phase2SettingsOptions = {}): Phase2SettingsPlane {
+  const store = new Phase2SettingsStore(blankToUndefined(options.settingsFile))
+  const fromConfig: Phase2SettingsValue = {
+    workbookPath: text(config.workbookPath),
+    selfCheckPath: text(config.selfCheckPath),
+    reportPath: text(config.reportPath),
+    mirrorPath: '',
+    contactPhone: text(config.contactPhone) || '13950182204',
+    contactEmail: text(config.contactEmail) || '102438@dnake.com',
+  }
+  try {
+    store.seedIfAbsent(readLegacySettings(blankToUndefined(options.legacyFile)), fromConfig)
+  } catch (error) {
+    ctx.logger.warn(`ohos-xts-auto-reporter: 设置迁移失败，使用空存储: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  const plane: Phase2SettingsPlane = {
+    get: () => store.read(),
+    merge: async (patch) => {
+      const merged = store.merge(patch)
+      ctx.logger.info('ohos-xts-auto-reporter: 设置已保存')
+      return merged
     },
-  }) as Phase2SettingsScope
+  }
+  ctx.logger.info(`ohos-xts-auto-reporter: 设置存储 ${store.filePath}`)
+  return plane
 }

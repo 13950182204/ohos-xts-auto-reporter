@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import path from 'node:path';
-import { toWslPath } from './phase2_logic.mjs';
+import { toHostPath } from './phase2_logic.mjs';
 
 const argv = process.argv.slice(2);
 const index = argv.indexOf('--workbook');
@@ -11,7 +11,7 @@ if (!requested || argv.includes('--help') || argv.includes('-h')) {
   console.error('Usage: recover_phase2_workbook.mjs --workbook ABSOLUTE_XLSX');
   process.exit(2);
 }
-const sourcePath = toWslPath(requested);
+const sourcePath = toHostPath(requested);
 const workbook = new ExcelJS.Workbook();
 await workbook.xlsx.readFile(sourcePath);
 const sheets = ['模组开发板', '发行版', '商用设备'];
