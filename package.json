@@ -1,6 +1,6 @@
 {
   "name": "ohos-xts-auto-reporter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenHarmony XTS 兼容性测试自动上报 DSH 插件：Host + Web client，第二阶段只保存草稿绝不提交",
   "type": "module",
   "main": "lib/index.js",
@@ -29,11 +29,19 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-slots"
       ],
       "platform": "web"
+    },
+    "engines": {
+      "dsh": ">=0.2.1-rc.1"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.1-rc.1": "compatible"
+      }
     }
   },
   "engines": {
@@ -52,24 +60,24 @@
     "schemastery": "^3.18.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.7 <0.3.0",
-    "@deepseek-ai/dsh-client-ui-settings": ">=0.1.0-rc.7 <0.3.0",
-    "@deepseek-ai/dsh-client-ui-slots": ">=0.1.0-rc.7 <0.3.0",
-    "@deepseek-ai/dsh-host-webserver": ">=0.1.0-rc.7 <0.3.0",
-    "@deepseek-ai/dsh-settings": ">=0.1.0-rc.7 <0.3.0",
-    "@deepseek-ai/dsh-skill": ">=0.1.0-rc.7 <0.3.0",
-    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.7 <0.3.0"
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.1-rc.1 <0.3.0",
+    "@deepseek-ai/dsh-client-ui-settings": ">=0.2.1-rc.1 <0.3.0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.2.1-rc.1 <0.3.0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.1-rc.1 <0.3.0",
+    "@deepseek-ai/dsh-settings": ">=0.2.1-rc.1 <0.3.0",
+    "@deepseek-ai/dsh-skill": ">=0.2.1-rc.1 <0.3.0",
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.1 <0.3.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-client-ui-settings": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-client-ui-slots": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-settings": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-skill": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-settings": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-host-webserver": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-settings": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-skill": "0.2.1-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.1-rc.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "@types/react": "~18.3.1",

@@ -6,6 +6,14 @@ OpenHarmony XTS 兼容性测试自动上报 DSH 插件（Host + Web client 双�
 
 新增模块：**兼容性申请第二阶段资料处理**。DSH 设置页会出现插件卡片，可填写账号、密码、第二阶段 Excel 路径或批量根目录和联系人资料，并执行本地预检或保存资料。
 
+> **DSH 兼容性（0.2.1）**：本插件已适配 **DSH 0.2.1-rc.1**。
+> 依赖基线 `@deepseek-ai/dsh-*` 统一升至 `0.2.1-rc.1`，cordis 升至 `4.0.5`；
+> `package.json` 的 `dsh.engines.dsh` 为 `>=0.2.1-rc.1`，`dsh.compatibility.dshReleases` 标记
+> `0.2.1-rc.1` 为 compatible。浏览器半区的 `ctx.slots` 服务改由
+> `@deepseek-ai/dsh-client-ui-renderer` 提供——`@deepseek-ai/dsh-client-runtime` 在 0.2.x
+> 发布线中已移除。本插件**不使用子代理 API**（没有 `ctx.subagents.start`），因此不涉及
+> `start` → `startActivation` 迁移；后续若新增子代理调用，需使用 0.2.1 的 `startActivation`。
+
 ## 能力：豁免草稿自动填写
 
 用 **browser_* 浏览器工具**（`@yeesy369/dsh-browser-playwright` 提供，操作真实浏览器窗口）逐页完成 OpenHarmony 兼容性平台的豁免表单填写：登录 → OAuth 授权 → 按测评编号查重 → 填表 → **只保存草稿**。
@@ -127,8 +135,8 @@ DSH 在宿主启动时读取插件 Host bundle 与 `dsh.client` 清单；安装�
   POST 传空密码表示保留原值。
 - 首次启动（存储文件不存在时）按顺序迁移一次：`~/.dsh/settings.yaml` 的 `ohos-xts-auto-reporter` 段 →
   cordis 配置 `phase2` 里的默认值。文件已存在则不再被任何来源覆盖。
-- 桌面侧豁免草稿半区依赖 `@yeesy369/dsh-browser-playwright` 提供的 `browser_*` 工具，该插件当前版本
-  不满足桌面运行时 0.2.0-rc.2 的 peer 门禁，因此桌面 profile 不装它：`browser_upload` 工具跳过注册
+- 桌面侧豁免草稿半区依赖 `@yeesy369/dsh-browser-playwright` 提供的 `browser_*` 工具，桌面 profile
+  当前未安装该插件，因此 `browser_upload` 工具跳过注册
   （skill 仍注册，第二阶段卡片/预检/提交路径不受影响）。`browser` 因此是**可选注入**
   （`ctx.inject(['browser'], …)`），不写进必需 `inject`——否则整个插件在桌面侧永不加载。
 
