@@ -4,8 +4,10 @@ import { Config, type Config as PluginConfig } from './config.ts';
  * OpenHarmony XTS 兼容性测试自动上报 DSH 插件。
  *
  * 运行时插件（DSH 双半区 bundle）：
- * - 注册 vendored skill：openharmony-waiver-draft（豁免草稿自动填写，
- *   由模型用 browser_* 工具驱动真实浏览器窗口执行，只存草稿绝不提交）；
+ * - 注册 vendored skill：openharmony-waiver-draft（豁免草稿自动填写，只存草稿绝不提交）；
+ * - 注册 waiver_draft 工具：插件 Host 用 Playwright 驱动 headless 浏览器保存豁免草稿，
+ *   不依赖 browser_* 工具（因此 DSH Desktop 也可用）；系统类型/操作系统版本号按测评编号
+ *   从平台反查，不接收写死默认值；
  * - 注册 browser_upload 工具：文件上传（依赖 @yeesy369/dsh-browser-playwright
  *   的 DSH 定制补丁 setInputFiles，见仓库 docs/browser-upload-patch.md）；
  *   该工具是**可选**能力，见下面 inject 的说明；
@@ -22,7 +24,7 @@ export declare const name = "ohos-xts-auto-reporter";
  * （desktop profile 当前未安装该插件）。若把它写进必需注入，
  * Cordis 会让整个插件在桌面侧永不 apply——设置页卡片、skill、预检全部一起消失。
  * 改为在 apply 内用 `ctx.inject(['browser'], …)` 派生可选子 fiber：服务出现才注册
- * browser_upload，缺失时插件其余能力照常可用。
+ * browser_upload，缺失时插件其余能力（含 waiver_draft）照常可用。
  */
 export declare const inject: string[];
 export { Config };

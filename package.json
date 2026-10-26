@@ -1,6 +1,6 @@
 {
   "name": "ohos-xts-auto-reporter",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "OpenHarmony XTS 兼容性测试自动上报 DSH 插件：Host + Web client，第二阶段只保存草稿绝不提交",
   "type": "module",
   "main": "lib/index.js",
@@ -40,7 +40,8 @@
     },
     "compatibility": {
       "dshReleases": {
-        "0.2.1-rc.1": "compatible"
+        "0.2.1-rc.1": "compatible",
+        "0.2.1-rc.3": "compatible"
       }
     }
   },

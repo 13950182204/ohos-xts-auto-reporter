@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Parse an OpenHarmony exemption-report directory into separate waiver input records.
 
-浏览器填写由模型按 SKILL.md 的 browser_* 流程执行；本脚本只负责纯本地解析
-（无浏览器依赖），输出每条豁免记录的输入 JSON。
+纯本地解析（无浏览器、无凭据依赖）：每个 `.txt` 报告解析为一条记录，输出给模型
+调用 `waiver_draft` 工具（或 browser_* 流程）使用。
+
+系统类型 / 操作系统版本号**不在此处写死**：它们必须由平台按测评编号反查
+（`/certificate/exempt/checkCertification?number=`），因此记录里不再输出这两个字段。
 """
 
 from __future__ import annotations
@@ -51,7 +54,7 @@ def parse_cases(lines: list[str]) -> list[dict[str, str]]:
     return cases
 
 
-def parse_report(path: Path, assessment: str, system_type: str, os_version: str, test_category: str) -> list[dict]:
+def parse_report(path: Path, assessment: str, test_category: str) -> list[dict]:
     text = path.read_text(encoding="utf-8-sig")
     sections = split_sections(text.splitlines())
     cases = parse_cases(sections.get(1, []))
@@ -68,8 +71,6 @@ def parse_report(path: Path, assessment: str, system_type: str, os_version: str,
         raise ValueError(f"Missing exemption reason in {path}")
     return [{
         "assessmentNumber": assessment,
-        "systemType": system_type,
-        "osVersion": os_version,
         "testCategory": test_category,
         "moduleName": first["module"],
         "testsuite": first["testsuite"],
@@ -84,15 +85,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Parse OpenHarmony exemption-report directory into separate waiver input records.")
     parser.add_argument("--report-dir", required=True)
     parser.add_argument("--assessment-number")
-    parser.add_argument("--system-type", default="标准系统")
-    parser.add_argument("--os-version", default="OpenHarmony 6.1 Release")
     parser.add_argument("--test-category", default="ACTS-Validator")
     parser.add_argument("--output-dir", help="导出每条记录的 JSON 目录（缺省仅打印清单）")
     args = parser.parse_args()
 
-    if not os.environ.get("OH_USERNAME") or not os.environ.get("OH_PASSWORD"):
-        print("没有填写对应账号密码，已停止执行。", file=sys.stderr)
-        return 2
     assessment = (args.assessment_number or os.environ.get("OH_ASSESSMENT_NUMBER", "")).strip()
     if not assessment or re.match(r"^(replace|请输入|OHC\.\.\.)", assessment, re.I):
         print("没有填写对应测评编号，已停止执行。", file=sys.stderr)
@@ -110,7 +106,7 @@ def main() -> int:
     records = []
     try:
         for report in reports:
-            records.extend(parse_report(report, assessment, args.system_type, args.os_version, args.test_category))
+            records.extend(parse_report(report, assessment, args.test_category))
     except (OSError, UnicodeError, ValueError) as error:
         print(f"报告解析失败：{error}", file=sys.stderr)
         return 1
@@ -129,7 +125,8 @@ def main() -> int:
             out_path = out_dir / f"{index:03d}.json"
             out_path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"已导出 {len(records)} 条记录 JSON 到 {out_dir}")
-        print("浏览器填写由模型按 SKILL.md 的 browser_* 流程逐条执行：查重命中待提交(status 0)记录时跳过该条；")
+        print("逐条调用 waiver_draft 工具（或按 SKILL.md 的 browser_* 流程）：")
+        print("系统类型/操作系统版本号由测评编号反查；查重命中待提交(status 0)记录时跳过该条；")
         print("任何一条查重不完整、验证挑战、解析或保存错误都会停止整个批次。")
     return 0
 

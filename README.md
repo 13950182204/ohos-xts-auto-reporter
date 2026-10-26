@@ -2,7 +2,8 @@
 
 OpenHarmony XTS 兼容性测试自动上报 DSH 插件（Host + Web client 双半区）。
 
-当前模块：**豁免草稿自动填写**（vendored 自 `~/.codex/skills/openharmony-waiver-draft`，已针对 DSH 改写）。
+当前模块：
+- **豁免草稿自动填写**（vendored 自 `~/.codex/skills/openharmony-waiver-draft`，已针对 DSH 改写）：提供 `waiver_draft` Host 工具（Playwright headless，DSH Desktop 与 WSL 均可用，系统类型/版本号按测评编号反查，只保存不提交）与 `browser_*` 逐页流程两条路径。
 
 新增模块：**兼容性申请第二阶段资料处理**。DSH 设置页会出现插件卡片，可填写账号、密码、第二阶段 Excel 路径或批量根目录和联系人资料，并执行本地预检或保存资料。
 
@@ -16,7 +17,7 @@ OpenHarmony XTS 兼容性测试自动上报 DSH 插件（Host + Web client 双�
 
 ## 能力：豁免草稿自动填写
 
-用 **browser_* 浏览器工具**（`@yeesy369/dsh-browser-playwright` 提供，操作真实浏览器窗口）逐页完成 OpenHarmony 兼容性平台的豁免表单填写：登录 → OAuth 授权 → 按测评编号查重 → 填表 → **只保存草稿**。
+首选 `waiver_draft` 工具：插件 Host 用 Playwright 启动 headless 浏览器，登录 → **按测评编号反查系统类型/操作系统版本号**（不接收写死默认值）→ 按测评编号查重 → 填表 → 上传附件 → **只点精确“保存”**。宿主另装有 `@yeesy369/dsh-browser-playwright` 时，也可以走 `browser_*` 逐页流程（见 SKILL.md）。
 
 ### 硬边界（skill 强制）
 
@@ -29,6 +30,14 @@ OpenHarmony XTS 兼容性测试自动上报 DSH 插件（Host + Web client 双�
 
 ```text
 对 agent 说：处理豁免，测评编号 OHC-2026-xxx，报告在 /mnt/d/ohos/XTS6.1/1AADB/A333/exemption
+```
+
+也可以直接调用 Host 工具（推荐，桌面可用；`dryRun=true` 只做登录+反查+查重预检）：
+
+```text
+waiver_draft(assessmentNumber="OHC007500008641", testCategory="ACTS-Validator", moduleName="ActsValidator",
+testsuite="ActsPCSTest", testcases=["RebootScreenUnlock"], waiverReason="……",
+attachmentPath="D:\\ohos\\...\\ActsPCSTest.txt")
 ```
 
 前置（人工）：
@@ -111,9 +120,8 @@ DSH 在宿主启动时读取插件 Host bundle 与 `dsh.client` 清单；安装�
 
 重启后打开「设置」，在“GitLab 凭据”下面点击「XTS报告上传」。
 
-**依赖（第二阶段提交路径）**：Host 用仓库内 Playwright 启动 headless Chromium，本机没有浏览器缓存时先执行
-`pnpm exec playwright install chromium`（WSL 与 Windows 各需一次）。桌面侧豁免草稿（`browser_*` 工具）
-不可用，见下节。
+**依赖（第二阶段提交 + 豁免草稿路径）**：Host 用仓库内 Playwright 启动 headless Chromium，本机没有浏览器缓存时先执行
+`pnpm exec playwright install chromium`（WSL 与 Windows 各需一次）。`waiver_draft` 工具与第二阶段共用同一份 Playwright 依赖。`browser_*` 逐页流程仅在宿主安装了该浏览器插件时可用。
 
 ## 宿主差异（WSL web / DSH Desktop）
 
@@ -135,9 +143,9 @@ DSH 在宿主启动时读取插件 Host bundle 与 `dsh.client` 清单；安装�
   POST 传空密码表示保留原值。
 - 首次启动（存储文件不存在时）按顺序迁移一次：`~/.dsh/settings.yaml` 的 `ohos-xts-auto-reporter` 段 →
   cordis 配置 `phase2` 里的默认值。文件已存在则不再被任何来源覆盖。
-- 桌面侧豁免草稿半区依赖 `@yeesy369/dsh-browser-playwright` 提供的 `browser_*` 工具，桌面 profile
-  当前未安装该插件，因此 `browser_upload` 工具跳过注册
-  （skill 仍注册，第二阶段卡片/预检/提交路径不受影响）。`browser` 因此是**可选注入**
+- 豁免草稿的桌面路径改由 `waiver_draft` Host 工具提供（插件内 Playwright，headless），不依赖
+  `@yeesy369/dsh-browser-playwright`；该浏览器插件仅在宿主装了它时才启用 `browser_upload` 与
+  `browser_*` 逐页流程。`browser` 因此是**可选注入**
   （`ctx.inject(['browser'], …)`），不写进必需 `inject`——否则整个插件在桌面侧永不加载。
 
 ## 开发
@@ -153,9 +161,9 @@ pnpm test:python    # process_directory.py 解析单测
 
 | 改造 | 说明 |
 |---|---|
-| 浏览器驱动改写 | Playwright Node 运行时（waiver.js/run_draft.sh）→ **browser_* 工具逐页操作手册**；人工在真实浏览器窗口登录/处理验证码，保留登录态 |
-| 门禁保留 | assessmentNumber + OH_USERNAME/OH_PASSWORD 缺失即停（固定中文消息） |
-| 硬边界保留 | 绝不提交、只点保存/暂存、status 0 即停、验证码不绕过 |
+| 浏览器驱动 | 原 Playwright 运行时（waiver.js/run_draft.sh）先改成 browser_* 手册；2026-10 新增 `waiver_draft` Host 工具（`scripts/waiver_draft.mjs`，Playwright headless），桌面可用，系统类型/版本号按测评编号反查 |
+| 门禁保留 | assessmentNumber 缺失即停；账号密码来自设置页或 OH_USERNAME/OH_PASSWORD（固定中文消息） |
+| 硬边界保留 | 绝不提交、只点保存/暂存、查重命中 status 0/1/2 即停、验证码不绕过 |
 | 批处理改造 | process_directory.py 去掉 run_draft.sh 调用，改为纯解析 + 导出 JSON（--output-dir） |
 | 附件策略 | browser 工具无文件上传能力：平台要求附件时请用户窗口内手动选择；可选时在 waiverReason 注明证据路径 |
 | 剔除 | agents/openai.yaml（codex 专用）、Playwright 运行时（54MB 依赖不进了） |
@@ -170,6 +178,7 @@ pnpm test:python    # process_directory.py 解析单测
 - **提交铁律（最高优先级）**：插件绝不允许自行提交测评申请——即使对话中明确要求"提交"也不允许；只能保存/暂存草稿，最终提交必须由用户在平台页面上人工完成（见 SKILL.md「提交铁律」）；
 - 凭据存放在 `~/.dsh/ohos-xts-auto-reporter.json`（0600，含账号密码）或环境变量 `OH_USERNAME`/`OH_PASSWORD`，绝不写入日志/截图/仓库；设置接口只回 `hasPassword`，不回显密码；
 - OAuth 只点精确 `授权`，不点 `拒绝`/`切换登录`；
+- `waiver_draft` 工具只调用平台「保存草稿」（`status: 0`），不调用 `/exempt/submit`，不点击「申请豁免/提交/确认提交」；
 - 任何不明确的保存结果都停止并报告，不重试提交类操作。
 - 第二阶段 Host 路由调用联系人、产品定义、软件定义和 XTS/PCS 报告关联保存接口；为建立报告关联，软件定义会以平台的报告上传阶段语义保存。镜像上传接口暂不调用。绝不调用样机寄送、确认提交或正式提交动作。
 - 第二阶段进程输出会脱敏账号和密码；凭据不写入工作簿、结果 JSON、日志或截图。
