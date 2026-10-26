@@ -40,6 +40,8 @@ testsuite="ActsPCSTest", testcases=["RebootScreenUnlock"], waiverReason="……"
 attachmentPath="D:\\ohos\\...\\ActsPCSTest.txt")
 ```
 
+也可以完全在设置页操作：填「测评编号（豁免）」「豁免资料路径」（目录或单个 `.txt`）与「测试套分类」，点「豁免资料预检」或「保存豁免草稿」；卡片会逐条显示进度，任一条失败即停止后续创建，**绝不提交**。
+
 前置（人工）：
 ```bash
 export OH_USERNAME='...'          # 仅本流程使用

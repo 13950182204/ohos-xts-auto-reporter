@@ -13,6 +13,12 @@ export interface Phase2Settings {
   mirrorPath?: string
   contactPhone?: string
   contactEmail?: string
+  /** 豁免资料路径（目录或单个 .txt）。 */
+  waiverPath?: string
+  /** 豁免用的测评编号（人工填写）。 */
+  waiverAssessmentNumber?: string
+  /** 豁免测试套分类（平台字典 test_type）。 */
+  waiverTestCategory?: string
 }
 
 export const Phase2Settings = z.object({
@@ -24,6 +30,9 @@ export const Phase2Settings = z.object({
   mirrorPath: z.string().default(''),
   contactPhone: z.string().default('13950182204'),
   contactEmail: z.string().default('102438@dnake.com'),
+  waiverPath: z.string().default(''),
+  waiverAssessmentNumber: z.string().default(''),
+  waiverTestCategory: z.string().default('ACTS-Validator'),
 })
 
 /**

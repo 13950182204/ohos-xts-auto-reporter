@@ -480,6 +480,26 @@ async function lookupAssessment(page, assessmentNumber) {
   return { systemTypeName: systemTypeName, systemVersionName: systemVersionName, certificationId: cert.id, chipList: cert.chipList, testTypes: testTypes };
 }
 
+/**
+ * 启动浏览器。优先用 Playwright 自带 Chromium；DSH Desktop 上通常没有下载浏览器，
+ * 此时 fallback 到系统 Edge/Chrome（channel），避免第一次使用就卡在 BROWSER_LAUNCH_FAILED。
+ */
+async function launchBrowser() {
+  const headless = process.env.OH_WAIVER_HEADLESS !== '0';
+  try {
+    return await chromium.launch({ headless: headless });
+  } catch (primaryError) {
+    const channels = process.platform === 'win32' ? ['msedge', 'chrome'] : ['chrome'];
+    for (const channel of channels) {
+      try {
+        return await chromium.launch({ headless: headless, channel: channel });
+      } catch {
+        // 继续尝试下一个通道
+      }
+    }
+    throw new WaiverError('BROWSER_LAUNCH_FAILED', '无法启动浏览器（请先执行 pnpm exec playwright install chromium，或安装 Edge/Chrome）：' + (primaryError && primaryError.message ? primaryError.message : String(primaryError)));
+  }
+}
 async function main() {
   let options;
   try {
@@ -508,7 +528,7 @@ async function main() {
       throw new WaiverError('CREDENTIALS_MISSING', 'OH_USERNAME and OH_PASSWORD must be set as temporary environment variables.');
     }
 
-    browser = await chromium.launch({ headless: process.env.OH_WAIVER_HEADLESS !== '0' });
+    browser = await launchBrowser();
     const context = await browser.newContext();
     const page = await context.newPage();
     page.setDefaultTimeout(15_000);

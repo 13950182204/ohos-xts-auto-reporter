@@ -17,6 +17,9 @@ type SettingsView = {
   reportPath?: string
   contactPhone?: string
   contactEmail?: string
+  waiverPath?: string
+  waiverAssessmentNumber?: string
+  waiverTestCategory?: string
 }
 type ResponseState = {
   ok: boolean
@@ -92,6 +95,9 @@ export function ReporterSettingsCard() {
   const [mirrorPath] = useState('')
   const [contactPhone, setContactPhone] = useState(DEFAULT_PHONE)
   const [contactEmail, setContactEmail] = useState(DEFAULT_EMAIL)
+  const [waiverPath, setWaiverPath] = useState('')
+  const [waiverAssessmentNumber, setWaiverAssessmentNumber] = useState('')
+  const [waiverTestCategory, setWaiverTestCategory] = useState('ACTS-Validator')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ResponseState | null>(null)
   const [hostState, setHostState] = useState<ResponseState | null>(null)
@@ -107,6 +113,9 @@ export function ReporterSettingsCard() {
       setWorkbookPath(displayValue(value.workbookPath))
       if (value.contactPhone) setContactPhone(displayValue(value.contactPhone))
       if (value.contactEmail) setContactEmail(displayValue(value.contactEmail))
+      setWaiverPath(displayValue(value.waiverPath))
+      setWaiverAssessmentNumber(displayValue(value.waiverAssessmentNumber))
+      if (value.waiverTestCategory) setWaiverTestCategory(displayValue(value.waiverTestCategory))
       setHasPassword(response.hasPassword === true)
       setSettingsLoaded(response.ok)
     })()
@@ -137,6 +146,7 @@ export function ReporterSettingsCard() {
   const progressDetail = displayValue(progress?.detail)
   const batch = (displayState?.batch ?? summary?.batch ?? result?.batch) as Record<string, unknown> | undefined
   const batchMode = displayValue(batch?.mode)
+  const batchTitle = displayValue(displayState?.kind) === 'waiver' ? '批量豁免草稿进度' : '批量评测进度'
   const batchItems = Array.isArray(batch?.items) ? batch.items as Array<Record<string, unknown>> : []
   const batchTaskCount = Number.isFinite(Number(batch?.taskCount)) ? Number(batch?.taskCount) : batchItems.filter((item) => item.taskIndex).length
   const batchSkippedCount = Number.isFinite(Number(batch?.skippedCount)) ? Number(batch?.skippedCount) : batchItems.filter((item) => displayValue(item.status) === 'skipped').length
@@ -152,6 +162,9 @@ export function ReporterSettingsCard() {
       mirrorPath: '',
       contactPhone: contactPhone.trim() || DEFAULT_PHONE,
       contactEmail: contactEmail.trim() || DEFAULT_EMAIL,
+      waiverPath: waiverPath.trim(),
+      waiverAssessmentNumber: waiverAssessmentNumber.trim(),
+      waiverTestCategory: waiverTestCategory.trim() || 'ACTS-Validator',
       // 空密码 = 保留已保存的密码；只有用户真的输入了新密码才提交。
       ...(password ? { password } : {}),
     })
@@ -180,6 +193,21 @@ export function ReporterSettingsCard() {
     setBusy(false)
   }
 
+  async function waiverPreflight(): Promise<void> {
+    setBusy(true)
+    setResult(null)
+    const saved = await saveSettings()
+    if (saved) setResult(await request('waiver/preflight', 'POST', { waiverPath: waiverPath.trim(), waiverAssessmentNumber: waiverAssessmentNumber.trim(), waiverTestCategory: waiverTestCategory.trim() }))
+    setBusy(false)
+  }
+
+  async function saveWaiverDraft(): Promise<void> {
+    setBusy(true)
+    setResult(null)
+    const saved = await saveSettings()
+    if (saved) setResult(await request('waiver/save', 'POST', { waiverPath: waiverPath.trim(), waiverAssessmentNumber: waiverAssessmentNumber.trim(), waiverTestCategory: waiverTestCategory.trim() }))
+    setBusy(false)
+  }
   const onText = (setter: (value: string) => void) => (event: ChangeEvent<HTMLInputElement>) => setter(event.target.value)
   const gridStyle: Record<string, string> = {
     display: 'grid',
@@ -203,18 +231,28 @@ export function ReporterSettingsCard() {
   },
   createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', marginBottom: '10px' } },
   createElement('strong', { style: { fontSize: '15px' } }, 'OpenHarmony XTS 自动上报'),
-    createElement('span', { style: { fontSize: '12px', opacity: 0.72 } }, '第二阶段资料')),
+    createElement('span', { style: { fontSize: '12px', opacity: 0.72 } }, '第二阶段资料 / 豁免草稿')),
   createElement('div', { style: gridStyle },
   createElement('label', { style: labelStyle() }, '账号', createElement('input', { type: 'text', autoComplete: 'username', value: username, onChange: onText(setUsername), disabled: busy, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '密码', createElement('input', { type: 'password', autoComplete: 'current-password', value: password, placeholder: '留空使用已保存密码或环境变量', onChange: onText(setPassword), disabled: busy, style: inputStyle() })),
   createElement('label', { style: fullWidthStyle }, 'Excel 文件或批量目录', createElement('input', { type: 'text', value: workbookPath, placeholder: '单个 Excel 或目录，例如 D:\\ohos\\XTS6.1\\DHong', onChange: onText(setWorkbookPath), disabled: busy, style: inputStyle() })),
   createElement('label', { style: fullWidthStyle }, '镜像固件路径（预留）', createElement('input', { type: 'text', value: mirrorPath, readOnly: true, placeholder: '未来固件自动上传，当前留空', disabled: true, style: inputStyle() })),
   createElement('label', { style: labelStyle() }, '企业联系电话', createElement('input', { type: 'tel', value: contactPhone, onChange: onText(setContactPhone), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, '企业邮箱', createElement('input', { type: 'email', value: contactEmail, onChange: onText(setContactEmail), disabled: busy, style: inputStyle() }))),
+  createElement('label', { style: labelStyle() }, '企业邮箱', createElement('input', { type: 'email', value: contactEmail, onChange: onText(setContactEmail), disabled: busy, style: inputStyle() })),
+  createElement('div', { style: { ...fullWidthStyle, borderTop: '1px solid var(--dsw-color-border, #cbd5e1)', paddingTop: '12px', marginTop: '2px' } },
+    createElement('div', { style: { fontSize: '13px', fontWeight: 600 } }, '豁免资料（只保存草稿，绝不提交）'),
+    createElement('span', { style: { fontSize: '12px', opacity: 0.7 } }, '从指定路径读取 .txt 豁免报告，按测评编号反查操作系统类型/版本后逐条保存草稿。')),
+  createElement('label', { style: labelStyle() }, '测评编号（豁免）', createElement('input', { type: 'text', value: waiverAssessmentNumber, placeholder: '例如 OHC007500008641', onChange: onText(setWaiverAssessmentNumber), disabled: busy, style: inputStyle() })),
+  createElement('label', { style: labelStyle() }, '豁免资料路径', createElement('input', { type: 'text', value: waiverPath, placeholder: '目录或单个 .txt，例如 D:\\ohos\\XTS6.1\\DHong\\DH-76AM-KS11C\\exemption', onChange: onText(setWaiverPath), disabled: busy, style: inputStyle() })),
+  createElement('label', { style: labelStyle() }, '测试套分类', createElement('input', { type: 'text', value: waiverTestCategory, placeholder: 'ACTS / ACTS-Validator / HATS / DCTS / SSTS', onChange: onText(setWaiverTestCategory), disabled: busy, style: inputStyle() }))),
   createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' } },
+
     createElement('button', { type: 'button', onClick: () => { void preflight() }, disabled: busy, style: buttonStyle(false) }, '预检'),
     createElement('button', { type: 'button', onClick: () => { void saveDraft() }, disabled: busy, style: buttonStyle(true) }, busy ? '处理中…' : '评测资料提交')),
-  createElement('p', { style: { fontSize: '12px', lineHeight: 1.5, opacity: 0.68, margin: '12px 0 0' } }, '镜像上传暂未启用；不会进入样机寄送或提交申请。'),
+  createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' } },
+    createElement('button', { type: 'button', onClick: () => { void waiverPreflight() }, disabled: busy, style: buttonStyle(false) }, '豁免资料预检'),
+    createElement('button', { type: 'button', onClick: () => { void saveWaiverDraft() }, disabled: busy, style: buttonStyle(true) }, busy ? '处理中…' : '保存豁免草稿')),
+  createElement('p', { style: { fontSize: '12px', lineHeight: 1.5, opacity: 0.68, margin: '12px 0 0' } }, '镜像上传暂未启用；豁免资料只保存草稿、绝不提交；批次中任一条失败会停止后续创建。'),
   showProgress ? createElement('div', { style: { marginTop: '14px' } },
     createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '6px', fontSize: '12px' } },
       createElement('span', null, progressStage || (busy ? '处理中' : '处理状态')),
@@ -231,7 +269,7 @@ export function ReporterSettingsCard() {
   ) : null,
   batchMode === 'batch' && batchItems.length > 0 ? createElement('div', { style: { marginTop: '14px' } },
     createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '8px', fontSize: '12px' } },
-      createElement('strong', null, `批量评测进度（${batchCompletedCount}/${batchTaskCount + batchSkippedCount}）`),
+      createElement('strong', null, `${batchTitle}（${batchCompletedCount}/${batchTaskCount + batchSkippedCount}）`),
       createElement('span', { style: { maxWidth: '50%', minWidth: 0, overflowWrap: 'anywhere', textAlign: 'right', opacity: 0.72 } }, batch?.rootPath ? displayValue(batch.rootPath) : '')),
     createElement('div', { style: { display: 'grid', gap: '8px' } }, batchItems.map((item, index) => {
       const itemPercent = Number.isFinite(Number(item.percent)) ? Math.max(0, Math.min(100, Number(item.percent))) : 0

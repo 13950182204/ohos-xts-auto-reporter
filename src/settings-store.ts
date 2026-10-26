@@ -35,6 +35,9 @@ const STRING_FIELDS = [
   'mirrorPath',
   'contactPhone',
   'contactEmail',
+  'waiverPath',
+  'waiverAssessmentNumber',
+  'waiverTestCategory',
 ] as const
 
 export function defaultSettingsFilePath(home: string = homedir()): string {
