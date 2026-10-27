@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import { createElement } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-// 0.2.x 起 slots 服务由 ui-renderer 提供（dsh-client-runtime 已从发布线移除）。
+// 0.2.x 起 slots 服务由 ui-renderer 提供（dsh-client-runtime / dsh-client-ui-slots 均已从发布线移除）。
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 const DEFAULT_PHONE = '13950182204'
 const DEFAULT_EMAIL = '102438@dnake.com'
