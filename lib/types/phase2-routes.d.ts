@@ -9,6 +9,33 @@ export interface Phase2SettingsPlane {
     get(): Phase2SettingsValue;
     merge(patch: Phase2SettingsValue): Promise<Phase2SettingsValue>;
 }
+/** `--scan` 的单条识别结果（与 scripts/waiver_batch.mjs 的 WAIVER_SCAN_JSON 对齐）。 */
+export interface WaiverScanItem {
+    sourceReport: string;
+    categoryFolder: string;
+    testCategory: string;
+    moduleName: string;
+    testsuite: string;
+    caseCount: number;
+    testcases: string[];
+    attachmentPath: string;
+    attachmentKind: string;
+    evidenceRelative: string[];
+    submissionPath: string;
+    ready: boolean;
+    problems: string[];
+}
+export interface WaiverScanSummary {
+    total: number;
+    ready: number;
+    blocked: number;
+    byCategory: Record<string, number>;
+}
+export interface WaiverScanResult {
+    root: string;
+    items: WaiverScanItem[];
+    summary: WaiverScanSummary;
+}
 export declare function registerPhase2Routes(ctx: Context, settings: Phase2SettingsPlane): void;
 /** 存储与迁移路径可由调用方注入（profile 配置覆盖 / 测试隔离，避免误读真实 home）。 */
 export interface Phase2SettingsOptions {

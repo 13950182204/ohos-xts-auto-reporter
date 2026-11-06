@@ -1,47 +1,41 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
-import { createElement } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // 0.2.x 起 slots 服务由 ui-renderer 提供（dsh-client-runtime / dsh-client-ui-slots 均已从发布线移除）。
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import {
+  SettingsCardView,
+  type ResponseState,
+  type SettingsFormValues,
+  type SettingsView,
+  type WaiverScan,
+} from './settings-view.ts'
 
 const DEFAULT_PHONE = '13950182204'
 const DEFAULT_EMAIL = '102438@dnake.com'
 
-/** 服务端 /settings 返回的业务值（密码永不回显，只回 hasPassword）。 */
-type SettingsView = {
-  username?: string
-  workbookPath?: string
-  selfCheckPath?: string
-  reportPath?: string
-  contactPhone?: string
-  contactEmail?: string
-  waiverPath?: string
-  waiverAssessmentNumber?: string
-  waiverTestCategory?: string
-}
-type ResponseState = {
-  ok: boolean
-  message?: string
-  errors?: string[]
-  summary?: Record<string, unknown>
-  batch?: Record<string, unknown>
-  state?: Record<string, unknown>
-  settings?: SettingsView
-  hasPassword?: boolean
+const EMPTY_VALUES: SettingsFormValues = {
+  username: '',
+  password: '',
+  workbookPath: '',
+  contactPhone: DEFAULT_PHONE,
+  contactEmail: DEFAULT_EMAIL,
+  waiverPath: '',
+  waiverAssessmentNumber: '',
 }
 
-async function request(path: string, method: 'GET' | 'POST', body?: Record<string, unknown>): Promise<ResponseState> {
+type ApiResult = { ok: boolean; message?: string }
+
+async function request<T extends ApiResult>(path: string, method: 'GET' | 'POST', body?: Record<string, unknown>): Promise<T> {
   try {
     const response = await fetch(`/api/ohos-xts-auto-reporter/${path}`, {
       method,
       headers: body ? { 'content-type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     })
-    const value = await response.json() as ResponseState
-    return value
+    return await response.json() as T
   } catch {
-    return { ok: false, message: '无法连接 DSH Host。' }
+    return { ok: false, message: '无法连接 DSH Host。' } as T
   }
 }
 
@@ -49,72 +43,40 @@ function displayValue(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-function inputStyle(): Record<string, string> {
-  return {
-    width: '100%',
-    boxSizing: 'border-box',
-    minHeight: '38px',
-    padding: '8px 11px',
-    border: '1px solid var(--dsw-color-border, #cbd5e1)',
-    borderRadius: '6px',
-    background: 'var(--dsw-color-input, transparent)',
-    color: 'inherit',
-  }
-}
-
-function labelStyle(): Record<string, string | number> {
-  return { display: 'grid', gap: '6px', margin: 0, minWidth: 0, fontSize: '13px' }
-}
-
-function buttonStyle(primary = false): Record<string, string> {
-  return {
-    border: `1px solid ${primary ? 'var(--dsw-color-primary, #2563eb)' : 'var(--dsw-color-border, #cbd5e1)'}`,
-    borderRadius: '6px',
-    minHeight: '38px',
-    padding: '7px 13px',
-    cursor: 'pointer',
-    color: primary ? '#fff' : 'inherit',
-    background: primary ? 'var(--dsw-color-primary, #2563eb)' : 'transparent',
-  }
-}
-
 /**
  * XTS 报告上传卡片。
  *
- * 数据面全部走本插件自己的 Host 路由（`/api/ohos-xts-auto-reporter/settings`），
+ * 数据面全部走本插件自己的 Host 路由（`/api/ohos-xts-auto-reporter/*`），
  * **不用 `ctx.settingsScope`**：该服务只存在于 DSH 0.1.x，0.2.0-rc.2（DSH Desktop）
  * 的浏览器半区已无此服务，注入它会让整个卡片永不挂载。
- * 组件不再接收任何注入 props，注册时也无需 `inject`。
+ * 视觉层拆在 `settings-view.ts`（纯 props），这里只负责状态、轮询与请求。
  */
 export function ReporterSettingsCard() {
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
+  const [values, setValues] = useState<SettingsFormValues>(EMPTY_VALUES)
   const [hasPassword, setHasPassword] = useState(false)
-  const [workbookPath, setWorkbookPath] = useState('')
-  const [mirrorPath] = useState('')
-  const [contactPhone, setContactPhone] = useState(DEFAULT_PHONE)
-  const [contactEmail, setContactEmail] = useState(DEFAULT_EMAIL)
-  const [waiverPath, setWaiverPath] = useState('')
-  const [waiverAssessmentNumber, setWaiverAssessmentNumber] = useState('')
-  const [waiverTestCategory, setWaiverTestCategory] = useState('ACTS-Validator')
   const [busy, setBusy] = useState(false)
+  const [scanning, setScanning] = useState(false)
   const [result, setResult] = useState<ResponseState | null>(null)
   const [hostState, setHostState] = useState<ResponseState | null>(null)
+  const [scan, setScan] = useState<WaiverScan | null>(null)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   useEffect(() => {
     let active = true
     void (async () => {
-      const response = await request('settings', 'GET')
+      const response = await request<ResponseState>('settings', 'GET')
       if (!active) return
-      const value = response.settings ?? {}
-      setUsername(displayValue(value.username))
-      setWorkbookPath(displayValue(value.workbookPath))
-      if (value.contactPhone) setContactPhone(displayValue(value.contactPhone))
-      if (value.contactEmail) setContactEmail(displayValue(value.contactEmail))
-      setWaiverPath(displayValue(value.waiverPath))
-      setWaiverAssessmentNumber(displayValue(value.waiverAssessmentNumber))
-      if (value.waiverTestCategory) setWaiverTestCategory(displayValue(value.waiverTestCategory))
+      const value: SettingsView = response.settings ?? {}
+      setValues((previous) => ({
+        ...previous,
+        username: displayValue(value.username),
+        password: '',
+        workbookPath: displayValue(value.workbookPath),
+        contactPhone: displayValue(value.contactPhone) || DEFAULT_PHONE,
+        contactEmail: displayValue(value.contactEmail) || DEFAULT_EMAIL,
+        waiverPath: displayValue(value.waiverPath),
+        waiverAssessmentNumber: displayValue(value.waiverAssessmentNumber),
+      }))
       setHasPassword(response.hasPassword === true)
       setSettingsLoaded(response.ok)
     })()
@@ -124,7 +86,7 @@ export function ReporterSettingsCard() {
   useEffect(() => {
     let active = true
     const poll = async () => {
-      const response = await request('status', 'GET')
+      const response = await request<ResponseState>('status', 'GET')
       if (active) setHostState(response)
     }
     void poll()
@@ -132,167 +94,75 @@ export function ReporterSettingsCard() {
     return () => { active = false; window.clearInterval(timer) }
   }, [])
 
-  const summary = useMemo(() => hostState?.state as Record<string, unknown> | undefined, [hostState])
-  const displayState = result && !summary?.finishedAt
-    ? { ...(summary ?? { phase: 'idle' }), finishedAt: new Date().toISOString(), ok: result.ok, message: result.message, batch: result.batch }
-    : summary
-  const operation = (result?.summary ?? summary?.summary) as Record<string, unknown> | undefined
-  const progress = (displayState?.progress ?? summary?.progress) as Record<string, unknown> | undefined
-  const progressPercent = Number.isFinite(Number(progress?.percent))
-    ? Math.max(0, Math.min(100, Number(progress?.percent)))
-    : undefined
-  const progressStage = displayValue(progress?.stage)
-  const progressDetail = displayValue(progress?.detail)
-  const batch = (displayState?.batch ?? summary?.batch ?? result?.batch) as Record<string, unknown> | undefined
-  const batchMode = displayValue(batch?.mode)
-  const batchTitle = displayValue(displayState?.kind) === 'waiver' ? '批量豁免草稿进度' : '批量评测进度'
-  const batchItems = Array.isArray(batch?.items) ? batch.items as Array<Record<string, unknown>> : []
-  const batchTaskCount = Number.isFinite(Number(batch?.taskCount)) ? Number(batch?.taskCount) : batchItems.filter((item) => item.taskIndex).length
-  const batchSkippedCount = Number.isFinite(Number(batch?.skippedCount)) ? Number(batch?.skippedCount) : batchItems.filter((item) => displayValue(item.status) === 'skipped').length
-  const batchCompletedCount = batchItems.filter((item) => ['saved', 'skipped', 'blocked', 'retryable'].includes(displayValue(item.status))).length
-  const results = Array.isArray(operation?.results) ? operation.results as Array<Record<string, unknown>> : []
-  const firstResult = results[0]
-  const attachments = firstResult?.attachments as Record<string, Record<string, unknown>> | undefined
+  function onChange(field: keyof SettingsFormValues, value: string): void {
+    setValues((previous) => ({ ...previous, [field]: value }))
+  }
 
   async function saveSettings(): Promise<boolean> {
-    const response = await request('settings', 'POST', {
-      username: username.trim(),
-      workbookPath: workbookPath.trim(),
+    const response = await request<ResponseState>('settings', 'POST', {
+      username: values.username.trim(),
+      workbookPath: values.workbookPath.trim(),
       mirrorPath: '',
-      contactPhone: contactPhone.trim() || DEFAULT_PHONE,
-      contactEmail: contactEmail.trim() || DEFAULT_EMAIL,
-      waiverPath: waiverPath.trim(),
-      waiverAssessmentNumber: waiverAssessmentNumber.trim(),
-      waiverTestCategory: waiverTestCategory.trim() || 'ACTS-Validator',
+      contactPhone: values.contactPhone.trim() || DEFAULT_PHONE,
+      contactEmail: values.contactEmail.trim() || DEFAULT_EMAIL,
+      waiverPath: values.waiverPath.trim(),
+      waiverAssessmentNumber: values.waiverAssessmentNumber.trim(),
       // 空密码 = 保留已保存的密码；只有用户真的输入了新密码才提交。
-      ...(password ? { password } : {}),
+      ...(values.password ? { password: values.password } : {}),
     })
     if (!response.ok) {
       setResult({ ok: false, message: response.message || '设置保存失败。' })
       return false
     }
-    if (password) setHasPassword(true)
-    setPassword('')
+    if (values.password) {
+      setHasPassword(true)
+      setValues((previous) => ({ ...previous, password: '' }))
+    }
     return true
   }
 
-  async function preflight(): Promise<void> {
+  async function runScan(): Promise<void> {
+    setScanning(true)
+    setResult(null)
+    const response = await request<WaiverScan>('waiver/scan', 'POST', { waiverPath: values.waiverPath.trim() })
+    setScan(response)
+    setScanning(false)
+  }
+
+  async function run(action: 'preflight' | 'save' | 'waiver/preflight' | 'waiver/save', body: Record<string, unknown>): Promise<void> {
     setBusy(true)
     setResult(null)
     const saved = await saveSettings()
-    if (saved) setResult(await request('preflight', 'POST', { workbookPath: workbookPath.trim() }))
+    if (saved) setResult(await request<ResponseState>(action, 'POST', body))
     setBusy(false)
   }
 
-  async function saveDraft(): Promise<void> {
-    setBusy(true)
-    setResult(null)
-    const saved = await saveSettings()
-    if (saved) setResult(await request('save', 'POST', { workbookPath: workbookPath.trim() }))
-    setBusy(false)
-  }
-
-  async function waiverPreflight(): Promise<void> {
-    setBusy(true)
-    setResult(null)
-    const saved = await saveSettings()
-    if (saved) setResult(await request('waiver/preflight', 'POST', { waiverPath: waiverPath.trim(), waiverAssessmentNumber: waiverAssessmentNumber.trim(), waiverTestCategory: waiverTestCategory.trim() }))
-    setBusy(false)
-  }
-
-  async function saveWaiverDraft(): Promise<void> {
-    setBusy(true)
-    setResult(null)
-    const saved = await saveSettings()
-    if (saved) setResult(await request('waiver/save', 'POST', { waiverPath: waiverPath.trim(), waiverAssessmentNumber: waiverAssessmentNumber.trim(), waiverTestCategory: waiverTestCategory.trim() }))
-    setBusy(false)
-  }
-  const onText = (setter: (value: string) => void) => (event: ChangeEvent<HTMLInputElement>) => setter(event.target.value)
-  const gridStyle: Record<string, string> = {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-    gap: '12px 14px',
-    alignItems: 'start',
-  }
-  const fullWidthStyle: Record<string, string> = { ...labelStyle(), gridColumn: '1 / -1' }
-  const showProgress = progressPercent !== undefined && (
-    busy || displayState?.phase !== 'idle' || Boolean(displayState?.finishedAt) || Boolean(result)
-  )
-  return createElement('section', {
-    style: {
-      padding: '16px',
-      border: '1px solid var(--dsw-color-border, #cbd5e1)',
-      borderRadius: '8px',
-      marginBottom: '12px',
-      maxWidth: '760px',
-      boxSizing: 'border-box',
+  return createElement(SettingsCardView, {
+    values,
+    hasPassword,
+    busy,
+    scanning,
+    settingsLoaded,
+    result,
+    state: hostState?.state,
+    scan,
+    onChange,
+    onPreflight: () => { void run('preflight', { workbookPath: values.workbookPath.trim() }) },
+    onSaveReport: () => { void run('save', { workbookPath: values.workbookPath.trim() }) },
+    onWaiverPreflight: () => {
+      void run('waiver/preflight', {
+        waiverPath: values.waiverPath.trim(),
+        waiverAssessmentNumber: values.waiverAssessmentNumber.trim(),
+      })
     },
-  },
-  createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '10px', marginBottom: '10px' } },
-  createElement('strong', { style: { fontSize: '15px' } }, 'OpenHarmony XTS 自动上报'),
-    createElement('span', { style: { fontSize: '12px', opacity: 0.72 } }, '第二阶段资料 / 豁免草稿')),
-  createElement('div', { style: gridStyle },
-  createElement('label', { style: labelStyle() }, '账号', createElement('input', { type: 'text', autoComplete: 'username', value: username, onChange: onText(setUsername), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, '密码', createElement('input', { type: 'password', autoComplete: 'current-password', value: password, placeholder: '留空使用已保存密码或环境变量', onChange: onText(setPassword), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: fullWidthStyle }, 'Excel 文件或批量目录', createElement('input', { type: 'text', value: workbookPath, placeholder: '单个 Excel 或目录，例如 D:\\ohos\\XTS6.1\\DHong', onChange: onText(setWorkbookPath), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: fullWidthStyle }, '镜像固件路径（预留）', createElement('input', { type: 'text', value: mirrorPath, readOnly: true, placeholder: '未来固件自动上传，当前留空', disabled: true, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, '企业联系电话', createElement('input', { type: 'tel', value: contactPhone, onChange: onText(setContactPhone), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, '企业邮箱', createElement('input', { type: 'email', value: contactEmail, onChange: onText(setContactEmail), disabled: busy, style: inputStyle() })),
-  createElement('div', { style: { ...fullWidthStyle, borderTop: '1px solid var(--dsw-color-border, #cbd5e1)', paddingTop: '12px', marginTop: '2px' } },
-    createElement('div', { style: { fontSize: '13px', fontWeight: 600 } }, '豁免资料（只保存草稿，绝不提交）'),
-    createElement('span', { style: { fontSize: '12px', opacity: 0.7 } }, '从指定路径读取 .txt 豁免报告，按测评编号反查操作系统类型/版本后逐条保存草稿。')),
-  createElement('label', { style: labelStyle() }, '测评编号（豁免）', createElement('input', { type: 'text', value: waiverAssessmentNumber, placeholder: '例如 OHC007500008641', onChange: onText(setWaiverAssessmentNumber), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, '豁免资料路径', createElement('input', { type: 'text', value: waiverPath, placeholder: '目录或单个 .txt，例如 D:\\ohos\\XTS6.1\\DHong\\DH-76AM-KS11C\\exemption', onChange: onText(setWaiverPath), disabled: busy, style: inputStyle() })),
-  createElement('label', { style: labelStyle() }, '测试套分类', createElement('input', { type: 'text', value: waiverTestCategory, placeholder: 'ACTS / ACTS-Validator / HATS / DCTS / SSTS', onChange: onText(setWaiverTestCategory), disabled: busy, style: inputStyle() }))),
-  createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '16px' } },
-
-    createElement('button', { type: 'button', onClick: () => { void preflight() }, disabled: busy, style: buttonStyle(false) }, '预检'),
-    createElement('button', { type: 'button', onClick: () => { void saveDraft() }, disabled: busy, style: buttonStyle(true) }, busy ? '处理中…' : '评测资料提交')),
-  createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '8px' } },
-    createElement('button', { type: 'button', onClick: () => { void waiverPreflight() }, disabled: busy, style: buttonStyle(false) }, '豁免资料预检'),
-    createElement('button', { type: 'button', onClick: () => { void saveWaiverDraft() }, disabled: busy, style: buttonStyle(true) }, busy ? '处理中…' : '保存豁免草稿')),
-  createElement('p', { style: { fontSize: '12px', lineHeight: 1.5, opacity: 0.68, margin: '12px 0 0' } }, '镜像上传暂未启用；豁免资料只保存草稿、绝不提交；批次中任一条失败会停止后续创建。'),
-  showProgress ? createElement('div', { style: { marginTop: '14px' } },
-    createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '6px', fontSize: '12px' } },
-      createElement('span', null, progressStage || (busy ? '处理中' : '处理状态')),
-      createElement('strong', null, `${Math.round(progressPercent)}%`)),
-    createElement('div', {
-      role: 'progressbar',
-      'aria-label': 'XTS 报告上传进度',
-      'aria-valuemin': 0,
-      'aria-valuemax': 100,
-      'aria-valuenow': Math.round(progressPercent),
-      style: { height: '8px', overflow: 'hidden', borderRadius: '4px', background: 'var(--dsw-color-fill-secondary, rgba(127, 127, 127, 0.22))' },
-    }, createElement('div', { style: { width: `${progressPercent}%`, height: '100%', borderRadius: 'inherit', background: result?.ok === false ? 'var(--dsw-color-danger, #dc2626)' : 'var(--dsw-color-primary, #2563eb)', transition: 'width 180ms ease-out' } })),
-    progressDetail ? createElement('div', { style: { marginTop: '6px', color: 'var(--dsw-color-text-secondary, inherit)', fontSize: '12px', lineHeight: 1.5 } }, progressDetail) : null,
-  ) : null,
-  batchMode === 'batch' && batchItems.length > 0 ? createElement('div', { style: { marginTop: '14px' } },
-    createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '12px', marginBottom: '8px', fontSize: '12px' } },
-      createElement('strong', null, `${batchTitle}（${batchCompletedCount}/${batchTaskCount + batchSkippedCount}）`),
-      createElement('span', { style: { maxWidth: '50%', minWidth: 0, overflowWrap: 'anywhere', textAlign: 'right', opacity: 0.72 } }, batch?.rootPath ? displayValue(batch.rootPath) : '')),
-    createElement('div', { style: { display: 'grid', gap: '8px' } }, batchItems.map((item, index) => {
-      const itemPercent = Number.isFinite(Number(item.percent)) ? Math.max(0, Math.min(100, Number(item.percent))) : 0
-      const itemStatus = displayValue(item.status) || 'pending'
-      const itemName = displayValue(item.name) || displayValue(item.directory) || `评测 ${index + 1}`
-      return createElement('div', { key: `${displayValue(item.directory)}-${String(item.taskIndex ?? index)}`, style: { padding: '8px 10px', border: '1px solid var(--dsw-color-border, #cbd5e1)', borderRadius: '6px' } },
-        createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12px' } },
-          createElement('span', { style: { minWidth: 0, overflowWrap: 'anywhere' } }, itemName),
-          createElement('span', null, `${Math.round(itemPercent)}%`)),
-        createElement('div', { role: 'progressbar', 'aria-label': `${itemName} 评测进度`, 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(itemPercent), style: { height: '6px', marginTop: '6px', overflow: 'hidden', borderRadius: '3px', background: 'var(--dsw-color-fill-secondary, rgba(127, 127, 127, 0.22))' } },
-          createElement('div', { style: { width: `${itemPercent}%`, height: '100%', borderRadius: 'inherit', background: ['blocked', 'retryable'].includes(itemStatus) ? 'var(--dsw-color-danger, #dc2626)' : 'var(--dsw-color-primary, #2563eb)', transition: 'width 180ms ease-out' } })),
-        createElement('div', { style: { marginTop: '5px', fontSize: '12px', lineHeight: 1.45, color: ['blocked', 'retryable'].includes(itemStatus) ? 'var(--dsw-color-danger, #b91c1c)' : 'var(--dsw-color-text-secondary, inherit)' } }, `${displayValue(item.stage) || itemStatus}${item.detail ? `：${displayValue(item.detail)}` : ''}`),
-        item.assessmentNumber ? createElement('div', { style: { marginTop: '3px', fontSize: '12px' } }, `测评编号：${displayValue(item.assessmentNumber)}`) : null,
-      )
-    })),
-  ) : null,
-  result ? createElement('div', { role: 'status', style: { marginTop: '10px', color: result.ok ? '#15803d' : '#b91c1c', whiteSpace: 'pre-wrap', fontSize: '13px' } }, result.ok ? (result.message || '操作成功。') : [result.message, ...(result.errors ?? [])].filter(Boolean).join('\n')) : null,
-  displayState !== undefined && (displayState.phase !== 'idle' || displayState.finishedAt) ? createElement('div', { role: 'status', style: { marginTop: '8px', fontSize: '12px', lineHeight: 1.6 } },
-    `Host 状态：${String(displayState.phase)}${displayState.message ? `，${String(displayState.message)}` : ''}`,
-    firstResult?.applicationId ? createElement('div', null, `申请标识：${String(firstResult.applicationId)}`) : null,
-    firstResult?.assessmentNumber ? createElement('div', null, `测评编号：${String(firstResult.assessmentNumber)}`) : null,
-    firstResult?.status ? createElement('div', null, `处理结果：${String(firstResult.status)}`) : null,
-    attachments?.mirror?.fileName ? createElement('div', null, `镜像：${String(attachments.mirror.fileName)}`) : null) : null,
-  !settingsLoaded ? createElement('div', { role: 'status', style: { marginTop: '8px', color: '#b45309', fontSize: '12px' } }, '读不到插件设置（Host 路由不可达）；保存与预检会失败。请确认 DSH 宿主已加载本插件。') : null)
+    onSaveWaiverDraft: () => {
+      void run('waiver/save', {
+        waiverPath: values.waiverPath.trim(),
+        waiverAssessmentNumber: values.waiverAssessmentNumber.trim(),
+      })
+    },
+    onScan: () => { void runScan() },
+  })
 }
 
 /**

@@ -83,7 +83,11 @@ describe('phase2 safety boundary', () => {
   it('does not contain a formal submission endpoint or action', async () => {
     const source = readFileSync(join(process.cwd(), 'scripts', 'fill_phase2.mjs'), 'utf8')
     const batchSource = readFileSync(join(process.cwd(), 'scripts', 'phase2_batch.mjs'), 'utf8')
-    const client = readFileSync(join(process.cwd(), 'src', 'client.tsx'), 'utf8')
+    // 设置卡片拆成「状态层 src/client.tsx + 视觉层 src/settings-view.ts」，安全边界要两处一起看。
+    const client = [
+      readFileSync(join(process.cwd(), 'src', 'client.tsx'), 'utf8'),
+      readFileSync(join(process.cwd(), 'src', 'settings-view.ts'), 'utf8'),
+    ].join('\n')
     expect(source).not.toContain('/submit')
     expect(source).not.toContain('确认提交')
     expect(source).toContain('isSave: true')
@@ -99,6 +103,11 @@ describe('phase2 safety boundary', () => {
     expect(client).toContain('镜像固件路径（预留）')
     expect(client).toContain('评测资料提交')
     expect(client).toContain('批量评测进度')
+    // 分类改为按豁免资料目录自动识别：设置卡片不得再出现人工「测试套分类」输入。
+    expect(client).not.toContain('测试套分类（')
+    expect(client).not.toContain("waiverTestCategory")
+    expect(client).toContain('识别目录')
+    expect(client).toContain('waiver/scan')
   })
 
   it('rejects a missing workbook before any browser action', async () => {
@@ -253,11 +262,11 @@ describe('phase2 safety boundary', () => {
   })
 
   it('exposes a labelled progress bar in the DSH settings card', () => {
-    const source = readFileSync(join(process.cwd(), 'src', 'client.tsx'), 'utf8')
+    const source = readFileSync(join(process.cwd(), 'src', 'settings-view.ts'), 'utf8')
     expect(source).toContain("role: 'progressbar'")
     expect(source).toContain("'aria-valuenow'")
     expect(source).toContain('XTS 报告上传进度')
-    expect(source).toContain('progressPercent')
+    expect(source).toContain('clampPercent')
     expect(source).toContain('aria-label')
   })
 

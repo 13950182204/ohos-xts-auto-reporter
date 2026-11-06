@@ -44,6 +44,92 @@ export function parseArgs(argv) {
   return options;
 }
 
+/**
+ * 测试套分类：一级目录名 → 平台字典 test_type。
+ * 现网豁免资料只有 Acts / ActsValidator；Hats / Dcts / Ssts 是按用户要求预留的检测，
+ * 资料里一旦出现同名目录即可自动识别，无需再改代码。
+ */
+export const CATEGORY_FOLDERS = {
+  acts: 'ACTS',
+  actsvalidator: 'ACTS-Validator',
+  hats: 'HATS',
+  dcts: 'DCTS',
+  ssts: 'SSTS',
+};
+
+/**
+ * 归一化测试套分类：目录名（Acts / ActsValidator）与平台规范值
+ * （ACTS / ACTS-VALIDATOR / HATS / DCTS / SSTS，大小写不敏感）都归一到平台字典值；
+ * 识别不到返回空串。
+ */
+export function normalizeTestCategory(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  // 只忽略大小写与分隔符差异（ActsValidator / ACTS-VALIDATOR / acts_validator 同一个键）；
+  // 其它字符保留，避免把「ACTS 全量报告」这类整句误判成分类值。
+  const key = text.toLowerCase().replace(/[\s_-]+/g, '');
+  return CATEGORY_FOLDERS[key] ?? '';
+}
+
+const REPORT_HEADER_RE = /^测试报告[：:]\s*([A-Za-z][A-Za-z0-9_-]*)/m;
+
+/** target 是否位于 rootPath 之内（rootPath 为空表示不限定范围）。 */
+function withinRoot(rootPath, target) {
+  if (!rootPath) return true;
+  const relative = path.relative(rootPath, target);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+/**
+ * 识别一份豁免报告的测试套分类（分类不再人工填写）。
+ *
+ * 优先级：
+ * ① 从报告所在目录向上、最多到 rootPath，找第一个能映射的目录名——目录结构是豁免资料
+ *    的事实来源，平台提交路径也由它推导；
+ * ② 报告首部 `测试报告：ACTS 全量报告 …` 作为二级兜底（正文里的
+ *    「平台提交路径 Acts/<模块名>/<套件名>.txt」是模板占位符，不解析）；
+ * ③ 都没有时 testCategory 为空串，由调用方报「无法识别测试套分类」。
+ *
+ * 返回 { testCategory, categoryFolder, categoryDirectory }；仅靠首部识别时后两者为空串。
+ */
+export function detectTestCategory({ reportPath, rootPath, reportText } = {}) {
+  if (!reportPath) return { testCategory: '', categoryFolder: '', categoryDirectory: '' };
+  const report = path.resolve(reportPath);
+  const boundary = rootPath ? path.resolve(rootPath) : '';
+  const bounded = boundary !== '' && withinRoot(boundary, report);
+  let current = path.dirname(report);
+  while (true) {
+    const folder = path.basename(current);
+    const testCategory = normalizeTestCategory(folder);
+    if (testCategory) return { testCategory, categoryFolder: folder, categoryDirectory: current };
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    if (bounded && current === boundary) break;
+    current = parent;
+  }
+  const header = REPORT_HEADER_RE.exec(String(reportText ?? ''));
+  if (header) {
+    const testCategory = normalizeTestCategory(header[1]);
+    if (testCategory) return { testCategory, categoryFolder: '', categoryDirectory: '' };
+  }
+  return { testCategory: '', categoryFolder: '', categoryDirectory: '' };
+}
+
+/**
+ * 平台提交路径：报告相对扫描根的 POSIX 路径（如 `Acts/<模块>/<套件>.txt`）。
+ * 单文件输入时 rootPath 传「识别到的分类目录的父目录」，结果仍是 `Acts/<模块>/<套件>.txt`。
+ * 报告不在 rootPath 之内时退化为文件名，避免产出 `../` 这种不可提交的路径。
+ */
+export function submissionPathFor({ rootPath, reportPath } = {}) {
+  if (!reportPath) return '';
+  const report = path.resolve(reportPath);
+  const root = rootPath ? path.resolve(rootPath) : path.dirname(report);
+  const relative = path.relative(root, report);
+  const posix = relative.split(path.sep).join('/');
+  if (!posix || posix.startsWith('../') || path.isAbsolute(relative)) return path.basename(report);
+  return posix;
+}
+
 export function validateInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw new Error('Input must be a JSON object');

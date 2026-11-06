@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildWaiverArgs,
+  inferTestCategory,
+  normalizeTestCategory,
   normalizeWaiverInput,
   parseWaiverOutput,
   toWaiverResult,
@@ -15,13 +17,14 @@ const baseInput = {
   testsuite: 'ActsPCSTest',
   testcases: ['RebootScreenUnlock'],
   waiverReason: '设备除了口令认证外不支持其他认证方式',
-  attachmentPath: '/mnt/d/ohos/evidence.txt',
+  attachmentPath: '/mnt/d/exemption/ActsValidator/ActsPCSTest-豁免材料.zip',
 }
 
 describe('normalizeWaiverInput', () => {
   it('保留必需字段并规整 testcases', () => {
     const input = normalizeWaiverInput({ ...baseInput, testcases: [' A ', '', 'B'] })
     expect(input.assessmentNumber).toBe('OHC007500008641')
+    expect(input.testCategory).toBe('ACTS-Validator')
     expect(input.testcases).toEqual(['A', 'B'])
     expect(input.dryRun).toBe(false)
   })
@@ -36,16 +39,47 @@ describe('normalizeWaiverInput', () => {
     expect(() => normalizeWaiverInput({ ...baseInput, assessmentNumber: '  ' })).toThrow('assessmentNumber')
   })
 
-  it('缺少测试套分类时立即报错', () => {
-    expect(() => normalizeWaiverInput({ ...baseInput, testCategory: '' })).toThrow('testCategory')
+  it('省略 testCategory 时按附件上级目录自动识别', () => {
+    expect(normalizeWaiverInput({ ...baseInput, testCategory: undefined }).testCategory).toBe('ACTS-Validator')
+  })
+
+  it('testCategory 接受目录名 / 规范值（大小写不敏感）', () => {
+    expect(normalizeWaiverInput({ ...baseInput, testCategory: 'acts' }).testCategory).toBe('ACTS')
+    expect(normalizeWaiverInput({ ...baseInput, testCategory: 'ACTS-VALIDATOR' }).testCategory).toBe('ACTS-Validator')
+    expect(normalizeWaiverInput({ ...baseInput, testCategory: 'Hats' }).testCategory).toBe('HATS')
+  })
+
+  it('缺少测试套分类且无法从目录识别时报错', () => {
+    expect(() => normalizeWaiverInput({ ...baseInput, testCategory: '', attachmentPath: '/mnt/d/ohos/evidence.txt' })).toThrow('testCategory')
+  })
+
+  it('显式传入无法识别的 testCategory 时报错', () => {
+    expect(() => normalizeWaiverInput({ ...baseInput, testCategory: 'FOO' })).toThrow('无法识别')
   })
 
   it('附件必须是绝对路径', () => {
-    expect(() => normalizeWaiverInput({ ...baseInput, attachmentPath: 'relative/evidence.txt' })).toThrow('绝对路径')
+    expect(() => normalizeWaiverInput({ ...baseInput, attachmentPath: 'relative/evidence.zip' })).toThrow('绝对路径')
   })
 
   it('dryRun 透传为布尔值', () => {
     expect(normalizeWaiverInput({ ...baseInput, dryRun: true }).dryRun).toBe(true)
+  })
+})
+
+describe('inferTestCategory', () => {
+  it('按分类目录名映射到平台字典值', () => {
+    expect(inferTestCategory('/mnt/d/exemption/ActsValidator/ActsPCSTest-豁免材料.zip')).toBe('ACTS-Validator')
+    expect(inferTestCategory('/mnt/d/exemption/Acts/ActsPCSTest.txt')).toBe('ACTS')
+    expect(normalizeTestCategory('Ssts')).toBe('SSTS')
+  })
+
+  it('兼容 Windows 反斜杠路径', () => {
+    expect(inferTestCategory('D:\\ohos\\hats\\SomeModule\\SomeSuite-豁免材料.zip')).toBe('HATS')
+  })
+
+  it('目录里没有分类目录时返回 undefined', () => {
+    expect(inferTestCategory('/mnt/d/ohos/evidence.txt')).toBeUndefined()
+    expect(normalizeTestCategory('')).toBeUndefined()
   })
 })
 
@@ -111,6 +145,12 @@ describe('toWaiverResult', () => {
     expect(result.systemVersionName).toBe('OpenHarmony 6.1 LTS')
     expect(result.certificationId).toBe('b6d5c5b24a374acd8a3bf54148444d81')
     expect(result.testcases).toEqual(['RebootScreenUnlock'])
+  })
+
+  it('脚本没回传 testCategory 时用归一化结果兜底', () => {
+    const result = toWaiverResult({ status: 'saved' }, 'ACTS-Validator')
+    expect(result.testCategory).toBe('ACTS-Validator')
+    expect(toWaiverResult({ status: 'saved', testCategory: 'HATS' }, 'ACTS-Validator').testCategory).toBe('HATS')
   })
 
   it('缺少 derived 时不报错', () => {

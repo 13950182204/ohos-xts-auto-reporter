@@ -3,7 +3,7 @@
 OpenHarmony XTS 兼容性测试自动上报 DSH 插件（Host + Web client 双半区）。
 
 当前模块：
-- **豁免草稿自动填写**（vendored 自 `~/.codex/skills/openharmony-waiver-draft`，已针对 DSH 改写）：提供 `waiver_draft` Host 工具（Playwright headless，DSH Desktop 与 WSL 均可用，系统类型/版本号按测评编号反查，只保存不提交）与 `browser_*` 逐页流程两条路径。
+- **豁免草稿自动填写**（vendored 自 `~/.codex/skills/openharmony-waiver-draft`，已针对 DSH 改写）：提供 `waiver_draft` Host 工具（Playwright headless，DSH Desktop 与 WSL 均可用，测试套分类按豁免资料目录自动识别，系统类型/版本号按测评编号反查，只保存不提交）与 `browser_*` 逐页流程两条路径。
 
 新增模块：**兼容性申请第二阶段资料处理**。DSH 设置页会出现插件卡片，可填写账号、密码、第二阶段 Excel 路径或批量根目录和联系人资料，并执行本地预检或保存资料。
 
@@ -35,12 +35,14 @@ OpenHarmony XTS 兼容性测试自动上报 DSH 插件（Host + Web client 双�
 也可以直接调用 Host 工具（推荐，桌面可用；`dryRun=true` 只做登录+反查+查重预检）：
 
 ```text
-waiver_draft(assessmentNumber="OHC007500008641", testCategory="ACTS-Validator", moduleName="ActsValidator",
+waiver_draft(assessmentNumber="OHC007500008641", moduleName="ActsValidator",
 testsuite="ActsPCSTest", testcases=["RebootScreenUnlock"], waiverReason="……",
-attachmentPath="D:\\ohos\\...\\ActsPCSTest.txt")
+attachmentPath="D:\\ohos\\...\\ActsValidator\\ActsPCSTest-豁免材料.zip")
 ```
 
-也可以完全在设置页操作：填「测评编号（豁免）」「豁免资料路径」（目录或单个 `.txt`）与「测试套分类」，点「豁免资料预检」或「保存豁免草稿」；卡片会逐条显示进度，任一条失败即停止后续创建，**绝不提交**。
+`testCategory` 可选：省略时按 `attachmentPath` 的上级目录自动识别（`Acts`→`ACTS`、`ActsValidator`→`ACTS-Validator`、`Hats`→`HATS`、`Dcts`→`DCTS`、`Ssts`→`SSTS`，大小写不敏感）。
+
+也可以完全在设置页操作：填「测评编号（豁免）」与「豁免资料路径」（目录或单个 `.txt`），点「识别」按目录结构自动列出每条资料的可识别测试套分类、模块、套件与平台提交路径，再点「豁免资料预检」或「保存豁免草稿」；测试套分类不再手填，**批量模式也不再接收分类参数**（每条记录自带 `testCategory` 与 `submissionPath`）。卡片会逐条显示进度，任一条失败即停止后续创建，**绝不提交**。
 
 前置（人工）：
 ```bash
@@ -69,7 +71,7 @@ export OH_PASSWORD='...'          # 新轮换密码
 预检要求外观图真实存在（最多 10 张），标准/小型系统的 `PCID.sc` 路径真实存在且扩展名为 `.sc`，软件版本、安全补丁标签、版本 Id、版本 Hash 和产品描述完整。新建申请时测评编号和申请标识留空，由平台回读写回工作簿。
 浏览器窗口弹出后，OpenAtom 登录/OAuth/验证码在窗口内人工处理一次，登录态持久（profile 目录）。
 
-单条模式：准备输入 JSON（assessmentNumber/systemType/osVersion/testCategory/moduleName/testsuite/testcases/waiverReason/attachmentPath）后直接说「保存豁免草稿」。
+单条模式：准备输入 JSON（assessmentNumber/moduleName/testsuite/testcases/waiverReason/attachmentPath，`testCategory` 可选）后直接说「保存豁免草稿」。
 
 ## 豁免资料规范（强制）
 
@@ -99,6 +101,35 @@ python3 skills/openharmony-waiver-draft/scripts/process_directory.py \
 ```
 
 输出形如「34 条独立豁免记录（34 个模块+套件，44 条用例）」并逐条标注 `[附件:zip]`（数字随资料变化，不是固定值）。导出的每条 JSON 由模型按 SKILL.md 流程逐条执行（查重命中即跳过；任一失败停止整批）。
+
+### 识别接口（设置页「识别」按钮）
+
+`POST /api/ohos-xts-auto-reporter/waiver/scan`，请求体 `{ "waiverPath": "<目录或文件>" }`（缺省取设置里的豁免资料路径）。接口纯本地、不联网、不登录，等价于 `node scripts/waiver_batch.mjs --scan --input <路径>`；设置页用它自动定位并显示平台提交路径。成功响应：
+
+```json
+{
+  "ok": true,
+  "root": "/mnt/d/ohos/XTS6.1/DHong/DH-76AM-HS26A/exemption",
+  "items": [{
+    "sourceReport": "…/Acts/ActsUpdateTest/ActsUpdateTest.txt",
+    "categoryFolder": "Acts",
+    "testCategory": "ACTS",
+    "moduleName": "ActsUpdateTest",
+    "testsuite": "ActsUpdateTest",
+    "caseCount": 2,
+    "testcases": ["RebootScreenUnlock"],
+    "attachmentPath": "…/Acts/ActsUpdateTest/ActsUpdateTest-豁免材料.zip",
+    "attachmentKind": "zip",
+    "evidenceRelative": ["evidence/ActsUpdateTest-report.txt"],
+    "submissionPath": "Acts/ActsUpdateTest/ActsUpdateTest.txt",
+    "ready": true,
+    "problems": []
+  }],
+  "summary": { "total": 1, "ready": 1, "blocked": 0, "byCategory": { "ACTS": 1 } }
+}
+```
+
+失败时同样返回 HTTP 200，结构为 `{ "ok": false, "error": "<中文原因>" }`。批量预检/保存（`waiver/preflight`、`waiver/save`）响应里的每条 batch item 也带 `testCategory` 与 `submissionPath`。
 
 ## 安装
 

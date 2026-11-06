@@ -17,6 +17,7 @@ const SCRIPT_TIMEOUT_MS = 10 * 60 * 1000
 
 export interface WaiverDraftInput {
   assessmentNumber: string
+  /** 归一化后必定有值：输入缺失时由 attachmentPath 的上级目录自动识别。 */
   testCategory: string
   moduleName: string
   testsuite?: string
@@ -33,12 +34,52 @@ export interface WaiverDraftResult {
   code?: string
   artifacts?: string
   assessmentNumber?: string
+  testCategory?: string
   moduleName?: string
   testsuite?: string
   testcases?: string[]
   systemTypeName?: string
   systemVersionName?: string
   certificationId?: string
+}
+
+/**
+ * 分类目录名 → 平台字典 test_type，比较时忽略大小写、空格、`-`、`_`。
+ * 数据层（`scripts/waiver_batch.mjs --scan`）与宿主层共用同一套映射：
+ * acts→ACTS、actsvalidator→ACTS-Validator、hats→HATS、dcts→DCTS、ssts→SSTS；
+ * 也接受 ACTS / ACTS-Validator / HATS / DCTS / SSTS 这类规范值。
+ */
+const TEST_CATEGORY_BY_FOLDER: Record<string, string> = {
+  acts: 'ACTS',
+  actsvalidator: 'ACTS-Validator',
+  hats: 'HATS',
+  dcts: 'DCTS',
+  ssts: 'SSTS',
+}
+
+/** 对外错误信息里列出的可用分类。 */
+const TEST_CATEGORY_HINT = 'ACTS / ACTS-Validator / HATS / DCTS / SSTS'
+
+/** 把目录名或平台字典值归一到规范的 test_type；无法识别时返回 undefined。 */
+export function normalizeTestCategory(value: string | undefined): string | undefined {
+  const key = (value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return key === '' ? undefined : TEST_CATEGORY_BY_FOLDER[key]
+}
+
+/**
+ * 从附件路径的上级目录自动识别测试套分类。
+ *
+ * 规范目录结构：`<root>/<分类目录>/<模块>/<套件>-豁免材料.zip`。
+ * 从附件所在目录逐级向上找第一个可识别的目录名（zip 与 txt 附件都适用），
+ * 同时兼容 `/` 与 `\` 两种分隔符，避免 Windows 路径在 WSL 宿主上无法解析。
+ */
+export function inferTestCategory(attachmentPath: string): string | undefined {
+  const parts = attachmentPath.split(/[\\/]+/).filter((part) => part !== '' && part !== '.')
+  for (let index = parts.length - 2; index >= 0; index -= 1) {
+    const category = normalizeTestCategory(parts[index])
+    if (category) return category
+  }
+  return undefined
 }
 
 /** 脚本目录（lib/waiver-tool.js → 包根/scripts）。 */
@@ -56,18 +97,28 @@ function stringValue(value: unknown): string | undefined {
  * **刻意不接收 `systemType` / `osVersion`**：系统类型与操作系统版本号必须由脚本按测评编号
  * 调平台 `/certificate/exempt/checkCertification?number=` 反查，避免沿用 `OpenHarmony 6.1 Release`
  * 之类写死默认值（用户 2026-10-26 明确要求）。调用方即使传了也会被忽略。
+ *
+ * `testCategory` 可省略：省略时按 attachmentPath 的上级目录（分类目录）自动识别；
+ * 显式传入但无法识别时立即报错，不静默回退。
  */
 export function normalizeWaiverInput(raw: unknown): WaiverDraftInput {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('参数必须是 JSON 对象。')
   const value = raw as Record<string, unknown>
   const text = (key: string): string => stringValue(value[key]) ?? ''
   const assessmentNumber = text('assessmentNumber')
-  const testCategory = text('testCategory')
   const moduleName = text('moduleName')
   const waiverReason = text('waiverReason')
   const attachmentPath = text('attachmentPath')
   if (!assessmentNumber) throw new Error('缺少 assessmentNumber（当前测评编号）。')
-  if (!testCategory) throw new Error('缺少 testCategory（测试套分类，如 ACTS / ACTS-Validator）。')
+  const providedCategory = text('testCategory')
+  const testCategory = providedCategory === ''
+    ? inferTestCategory(attachmentPath)
+    : normalizeTestCategory(providedCategory)
+  if (!testCategory) {
+    throw new Error(providedCategory === ''
+      ? '无法识别测试套分类，请提供 testCategory 或使用 Acts/ActsValidator/Hats/Dcts/Ssts 目录结构（attachmentPath 的上级目录里没有可识别的分类目录）。'
+      : `无法识别测试套分类，请提供 testCategory 或使用 Acts/ActsValidator/Hats/Dcts/Ssts 目录结构（收到的是 ${providedCategory}，可用值：${TEST_CATEGORY_HINT}）。`)
+  }
   if (!moduleName) throw new Error('缺少 moduleName（模块名称）。')
   if (!waiverReason) throw new Error('缺少 waiverReason（豁免原因）。')
   if (!attachmentPath) throw new Error('缺少 attachmentPath（附件绝对路径）。')
@@ -127,7 +178,7 @@ export function parseWaiverOutput(output: string): Record<string, unknown> | und
 }
 
 /** 把脚本结果整理成工具输出；`derived` 里是测评编号反查出来的字段。 */
-export function toWaiverResult(parsed: Record<string, unknown>): WaiverDraftResult {
+export function toWaiverResult(parsed: Record<string, unknown>, fallbackTestCategory?: string): WaiverDraftResult {
   const derived = parsed.derived !== null && typeof parsed.derived === 'object' && !Array.isArray(parsed.derived)
     ? parsed.derived as Record<string, unknown>
     : {}
@@ -141,6 +192,7 @@ export function toWaiverResult(parsed: Record<string, unknown>): WaiverDraftResu
     code: stringValue(parsed.code),
     artifacts: stringValue(parsed.artifacts),
     assessmentNumber: stringValue(parsed.assessmentNumber),
+    testCategory: stringValue(parsed.testCategory) ?? stringValue(fallbackTestCategory),
     moduleName: stringValue(parsed.moduleName),
     testsuite: stringValue(parsed.testsuite),
     testcases,
@@ -168,10 +220,11 @@ export function registerWaiverTool(ctx: Context, settings: Phase2SettingsPlane):
       '保存 OpenHarmony 兼容性平台测试豁免草稿（只保存，绝不提交）。'
       + '插件 Host 用 Playwright 登录平台：按测评编号反查系统类型/操作系统版本号 → 查询是否已有待提交(status 0)草稿 → 填表 → 上传证据附件 → 只点击精确「保存」。'
       + '系统类型与版本号不接收写死值；查重命中、验证码、字段不匹配或保存结果不明确时停止并返回证据目录。'
+      + 'testCategory 可省略：省略时按 attachmentPath 的上级目录（Acts / ActsValidator / Hats / Dcts / Ssts）自动识别。'
       + 'dryRun=true 时只做登录+反查+查重预检，不打开创建申请。',
     parameters: {
       assessmentNumber: { type: 'string', required: true, description: '当前测评编号，例如 OHC007500008641（必须由人工提供）' },
-      testCategory: { type: 'string', required: true, description: '测试套分类，取平台字典 test_type：ACTS / ACTS-Validator / HATS / DCTS / SSTS' },
+      testCategory: { type: 'string', description: `测试套分类，取平台字典 test_type：${TEST_CATEGORY_HINT}；留空时按 attachmentPath 的上级目录自动识别` },
       moduleName: { type: 'string', required: true, description: '模块名称（Module），例如 ActsValidator' },
       testsuite: { type: 'string', description: '测试套名称（Testsuite）；留空表示整个模块豁免' },
       testcases: { type: 'array', items: { type: 'string' }, description: '测试用例名称列表；留空表示整个测试套豁免' },
@@ -190,6 +243,7 @@ export function registerWaiverTool(ctx: Context, settings: Phase2SettingsPlane):
           code: { type: 'string' },
           artifacts: { type: 'string' },
           assessmentNumber: { type: 'string' },
+          testCategory: { type: 'string' },
           moduleName: { type: 'string' },
           testsuite: { type: 'string' },
           testcases: { type: 'array', items: { type: 'string' } },
@@ -206,6 +260,7 @@ export function registerWaiverTool(ctx: Context, settings: Phase2SettingsPlane):
           lines.push(`反查字段：${result.systemTypeName ?? '?'} / ${result.systemVersionName ?? '?'}`)
         }
         if (result.assessmentNumber) lines.push(`测评编号：${result.assessmentNumber}`)
+        if (result.testCategory) lines.push(`测试套分类：${result.testCategory}`)
         if (result.artifacts) lines.push(`证据目录：${result.artifacts}`)
         return [{ type: 'text', text: lines.join('\n') }]
       },
@@ -241,7 +296,7 @@ export function registerWaiverTool(ctx: Context, settings: Phase2SettingsPlane):
       const output = redact(`${stdout}${stderr ? `\n${stderr}` : ''}`.trim(), [username, password])
       const parsed = parseWaiverOutput(output)
       if (!parsed) throw new Error(`豁免草稿流程未返回结构化结果（退出码 ${exitCode}）。输出：${output.slice(-1200)}`)
-      const result = toWaiverResult(parsed)
+      const result = toWaiverResult(parsed, input.testCategory)
       if (exitCode !== 0 || result.status === 'stopped') {
         const detail = [result.code, result.message].filter(Boolean).join(': ') || '原因不明'
         throw new Error(`豁免草稿未保存（${detail}）。证据目录：${result.artifacts ?? '（无）'}`)

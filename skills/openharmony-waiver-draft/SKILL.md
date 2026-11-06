@@ -1,13 +1,13 @@
 ---
 name: openharmony-waiver-draft
-description: 自动化 OpenHarmony 兼容性平台测试豁免（waiver）草稿保存：首选调用插件 Host 工具 waiver_draft（Playwright，桌面与 WSL 均可用，系统类型/版本号按测评编号反查，只保存绝不提交）；仅有 browser_* 工具的宿主走逐页流程。当用户提供兼容性测试失败项、测评编号、报告路径，或要求处理整个豁免目录时使用。执行前必须由人工填写当前测评编号；账号密码来自插件设置页「XTS报告上传」或 OH_USERNAME/OH_PASSWORD 环境变量。
+description: 自动化 OpenHarmony 兼容性平台测试豁免（waiver）草稿保存：首选调用插件 Host 工具 waiver_draft（Playwright，桌面与 WSL 均可用，系统类型/版本号按测评编号反查、测试套分类按豁免资料目录自动识别，只保存绝不提交）；仅有 browser_* 工具的宿主走逐页流程。当用户提供兼容性测试失败项、测评编号、报告路径，或要求处理整个豁免目录时使用。执行前必须由人工填写当前测评编号；账号密码来自插件设置页「XTS报告上传」或 OH_USERNAME/OH_PASSWORD 环境变量。
 ---
 
 # OpenHarmony 豁免草稿填写
 
 按宿主能力选择执行方式，目标一致：查重后保存独立草稿，**绝不提交**。
 
-1. **`waiver_draft` 工具（首选；DSH Desktop 与 WSL 均可用）**：插件 Host 直接驱动 Playwright（headless），完成登录 → 按测评编号反查系统类型/操作系统版本号 → 查重 → 填表 → 上传附件 → 只点精确「保存」。**不依赖 browser_\* 工具。**
+1. **`waiver_draft` 工具（首选；DSH Desktop 与 WSL 均可用）**：插件 Host 直接驱动 Playwright（headless），完成登录 → 按测评编号反查系统类型/操作系统版本号 → 按资料目录识别测试套分类 → 查重 → 填表 → 上传附件 → 只点精确「保存」。**不依赖 browser_\* 工具。**
 2. **browser_\* 逐页流程（仅当宿主提供浏览器工具时）**：见「浏览器操作流程（browser_\* 工具）」。
 
 ## 硬边界（任何情况下不可逾越）
@@ -36,24 +36,23 @@ description: 自动化 OpenHarmony 兼容性平台测试豁免（waiver）草稿
 ```json
 {
   "assessmentNumber": "<人工填写的最新编号>",
-  "testCategory": "ACTS-Validator",
   "moduleName": "ActsValidator",
   "testsuite": "ActsPCSTest",
   "testcases": ["RebootScreenUnlock"],
   "waiverReason": "……",
-  "attachmentPath": "/mnt/d/.../evidence.txt"
+  "attachmentPath": "/mnt/d/.../ActsValidator/ActsPCSTest-豁免材料.zip"
 }
 ```
 
 - **不再包含 `systemType` / `osVersion`**：二者由测评编号反查，写死值会被忽略或触发停止。
-- `testCategory` 取平台字典 `test_type`：`ACTS` / `ACTS-Validator` / `HATS` / `DCTS` / `SSTS`（工具会按字典校验，不在其中即停）。
+- **`testCategory` 可省略**：省略时按 `attachmentPath` 的上级目录自动识别（`Acts`→`ACTS`、`ActsValidator`→`ACTS-Validator`、`Hats`→`HATS`、`Dcts`→`DCTS`、`Ssts`→`SSTS`，大小写不敏感，也接受 `ACTS` / `ACTS-Validator` 等规范值）；显式传入无法识别的值会立即报错，不静默回退。
 - 从 `模块#套件#用例` 形式的失败标识解析各字段；附件路径优先选择内容与失败用例和原因一致的文件，**不要上传同名但内容矛盾的文件**。
 - Windows 路径映射为 `/mnt/<盘符小写>/...`。
 
 ## 工具流程（waiver_draft，首选）
 
-1. 传入参数：`assessmentNumber` / `testCategory` / `moduleName` / `testsuite` / `testcases` / `waiverReason` / `attachmentPath`；可选 `dryRun=true` 只做登录+反查+查重预检，不打开创建申请。
-2. 工具返回：`status`（`saved` / `preflight-complete` / `stopped`）、`message`、`systemTypeName`、`systemVersionName`、`artifacts`（截图与 `result.json` 目录）。
+1. 传入参数：`assessmentNumber` / `moduleName` / `testsuite` / `testcases` / `waiverReason` / `attachmentPath`；`testCategory` 可省略（按 `attachmentPath` 的上级目录自动识别）；可选 `dryRun=true` 只做登录+反查+查重预检，不打开创建申请。
+2. 工具返回：`status`（`saved` / `preflight-complete` / `stopped`）、`testCategory`（识别/归一化后的分类）、`message`、`systemTypeName`、`systemVersionName`、`artifacts`（截图与 `result.json` 目录）。
 3. 查重命中匹配的同键记录 → 工具按状态返回 `PENDING_DUPLICATE_FOUND`（0）/ `EXISTING_WAIVER_UNDER_REVIEW`（1）/ `EXISTING_WAIVER_APPROVED`（2）与草稿 ID，报告后**不再创建**；仅 status 3（豁免失败）允许重新申请。
 4. 保存成功标志为 `保存成功`；结果不明确即停止并上报 `artifacts`。
 5. 收尾：报告草稿状态、反查出的系统类型/版本、证据目录、测评编号；**不点击任何提交类按钮**。
@@ -73,7 +72,7 @@ description: 自动化 OpenHarmony 兼容性平台测试豁免（waiver）草稿
    - 列表报告的行数超过返回行数（分页/查询不完整）→ **不要假设不存在**，停下做完整查询。
 3. **打开创建申请表单**：进入创建/新增申请页。按快照编号逐项填写：
    - 测评编号填入后先失焦，等平台自动带出 `操作系统类型` / `操作系统版本号` / `certificationId`；核对显示值与平台反查一致，**不要手填或沿用输入 JSON 的旧值**；
-   - `testCategory` / `moduleName` / `testsuite`：按输入 JSON 选择或填写；
+   - `testCategory` / `moduleName` / `testsuite`：按识别结果（输入 JSON 或附件目录推断）选择或填写；
    - `testcases`：多用例用英文逗号连接为一个字段；
    - `waiverReason`：完整的豁免原因文本。
 4. **附件**（平台要求时）：
@@ -99,7 +98,7 @@ exemption/<测试大项>/<模块名>/
     └── <套件>-hilog.txt       # 按需：关键 hilog 摘录
 ```
 
-- 测试大项目录名 = 平台 `test_type`：`Acts` / `ActsValidator` / `Hats` / `Dcts` / `Ssts`（历史目录若是 `ACTS` 等写法，解析时按 `--test-category` 显式传平台字典值）。
+- 测试大项目录名 = 平台 `test_type` 的来源：`Acts`→`ACTS`、`ActsValidator`→`ACTS-Validator`、`Hats`→`HATS`、`Dcts`→`DCTS`、`Ssts`→`SSTS`（大小写不敏感，也接受 `ACTS` / `ACTS-Validator` 等规范值）；平台提交路径为 `Acts/<模块>/<套件>.txt`，由目录结构直接推导，不需要人工填写分类。
 - 文件名必须等于 Testsuite 名（去掉 `Test` 也不改：以报告的 `testsuite name` 为准），否则解析器按「布局不符合规范」报错。
 - 父目录名必须等于 Module 名（`result/<模块>.xml` 的 `<模块>`）。
 
@@ -133,7 +132,7 @@ exemption/<测试大项>/<模块名>/
 |---|---|
 | 测评编号 | 人工提供的最新编号（绝不沿用旧任务） |
 | 操作系统类型 / 版本号 | 按测评编号反查，**不写死** |
-| 测试套分类 | `ACTS`（或 `test_category`） |
+| 测试套分类 | 按资料目录自动识别（`Acts`→`ACTS`、`ActsValidator`→`ACTS-Validator`、`Hats`→`HATS`、`Dcts`→`DCTS`、`Ssts`→`SSTS`），不再手填 |
 | 模块名称(Module) | `<模块名>` |
 | 测试套名称(Testsuite) | `<套件名>`——**必填且只能一个**；留空意味着整个模块豁免，本规范禁止 |
 | 测试用例名称(Testcase) | 本套件失败用例裸名，英文逗号连接（1 条也照写） |
@@ -170,6 +169,16 @@ python3 {{SKILLS_DIR}}/openharmony-waiver-draft/scripts/process_directory.py \
 - 输出目录内每条记录一个 JSON；`--assessment-number` 缺省读 `OH_ASSESSMENT_NUMBER` 环境变量。输出的记录**不含** `systemType` / `osVersion`（由测评编号反查）。
 - 旧目录（一个 .txt 混多个套件、无 zip）可用 `--allow-legacy` 解析，仅警告；**正式提交前必须整理成上面的布局**。
 - 然后对每条 JSON **依次**执行上面的工具流程（查重命中 status 0 时跳过该条继续下一条）；任何一条查重不完整、验证挑战、解析错误或保存错误 → **停止整个批次**，报告已处理与剩余记录。
+
+### Host 批量识别接口（设置页「识别」按钮）
+
+插件设置页的「识别」按钮调用 `POST /api/ohos-xts-auto-reporter/waiver/scan`（请求体 `{ "waiverPath": "<目录或文件>" }`，缺省取设置里的豁免资料路径）。该接口纯本地、不联网、不登录，等价于 `node scripts/waiver_batch.mjs --scan --input <路径>`，返回 `{ ok: true, root, items, summary }`：
+
+- `items[]`：`sourceReport`、`categoryFolder`、`testCategory`、`moduleName`、`testsuite`、`caseCount`、`testcases`、`attachmentPath`、`attachmentKind`（固定 `zip`）、`evidenceRelative`、`submissionPath`（`Acts/<模块>/<套件>.txt`）、`ready`、`problems`；
+- `summary`：`total` / `ready` / `blocked` / `byCategory`（如 `{"ACTS":14,"ACTS-Validator":6}`）；
+- 失败同样返回 HTTP 200：`{ "ok": false, "error": "<中文原因>" }`。
+
+批量预检/保存（`waiver/preflight`、`waiver/save`）不再接收 `--test-category` 参数；每条记录与 `PHASE2_BATCH_ITEM_RESULT` 都带 `testCategory` 与 `submissionPath`。
 
 ## 失败处理
 

@@ -15,8 +15,6 @@ export interface Phase2Settings {
     waiverPath?: string;
     /** 豁免用的测评编号（人工填写）。 */
     waiverAssessmentNumber?: string;
-    /** 豁免测试套分类（平台字典 test_type）。 */
-    waiverTestCategory?: string;
 }
 export declare const Phase2Settings: z<Schemastery.ObjectS<{
     username: z<string, string>;
@@ -29,7 +27,6 @@ export declare const Phase2Settings: z<Schemastery.ObjectS<{
     contactEmail: z<string, string>;
     waiverPath: z<string, string>;
     waiverAssessmentNumber: z<string, string>;
-    waiverTestCategory: z<string, string>;
 }>, Schemastery.ObjectT<{
     username: z<string, string>;
     password: z<string, string>;
@@ -41,7 +38,6 @@ export declare const Phase2Settings: z<Schemastery.ObjectS<{
     contactEmail: z<string, string>;
     waiverPath: z<string, string>;
     waiverAssessmentNumber: z<string, string>;
-    waiverTestCategory: z<string, string>;
 }>>;
 /**
  * 插件配置。默认值即可开箱即用；可在 profile 的 cordis.patch.yml

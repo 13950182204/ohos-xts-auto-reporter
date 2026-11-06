@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { dirname, join, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
@@ -37,6 +38,10 @@ type BatchItemState = {
   detail?: string
   applicationId?: string
   assessmentNumber?: string
+  /** 豁免资料自动识别出的测试套分类（ACTS / ACTS-Validator / HATS / DCTS / SSTS）。 */
+  testCategory?: string
+  /** 平台提交路径，例如 `Acts/<模块>/<套件>.txt`。 */
+  submissionPath?: string
   code?: string
 }
 type BatchState = {
@@ -45,6 +50,33 @@ type BatchState = {
   taskCount: number
   skippedCount: number
   items: BatchItemState[]
+}
+/** `--scan` 的单条识别结果（与 scripts/waiver_batch.mjs 的 WAIVER_SCAN_JSON 对齐）。 */
+export interface WaiverScanItem {
+  sourceReport: string
+  categoryFolder: string
+  testCategory: string
+  moduleName: string
+  testsuite: string
+  caseCount: number
+  testcases: string[]
+  attachmentPath: string
+  attachmentKind: string
+  evidenceRelative: string[]
+  submissionPath: string
+  ready: boolean
+  problems: string[]
+}
+export interface WaiverScanSummary {
+  total: number
+  ready: number
+  blocked: number
+  byCategory: Record<string, number>
+}
+export interface WaiverScanResult {
+  root: string
+  items: WaiverScanItem[]
+  summary: WaiverScanSummary
 }
 type RunState = {
   /** 当前任务来源：第二阶段资料 / 豁免草稿（设置卡片据此切换文案）。 */
@@ -188,6 +220,8 @@ function batchFromValue(value: unknown): BatchState | undefined {
       || (item.summary !== null && typeof item.summary === 'object' && !Array.isArray(item.summary)
         ? text((item.summary as Record<string, unknown>).assessmentNumber)
         : undefined),
+    testCategory: text(item.testCategory) || undefined,
+    submissionPath: text(item.submissionPath) || undefined,
     code: text(item.code) || undefined,
   }))
   const rawSkipped = Array.isArray(source.skipped) ? source.skipped : []
@@ -244,6 +278,8 @@ function applyBatchItemResult(batch: BatchState | undefined, value: Record<strin
     detail: text(value.message) || item.detail,
     applicationId: text(value.applicationId) || item.applicationId,
     assessmentNumber: text(value.assessmentNumber) || item.assessmentNumber,
+    testCategory: text(value.testCategory) || item.testCategory,
+    submissionPath: text(value.submissionPath) || item.submissionPath,
     code: text(value.code) || item.code,
   } : item)
   return { ...batch, items }
@@ -420,11 +456,10 @@ async function handleSave(req: IncomingMessage, res: ServerResponse, settings: P
 }
 
 
-function waiverInputs(body: Record<string, unknown>, settings: Phase2SettingsValue): { path: string; assessment: string; testCategory: string } {
+function waiverInputs(body: Record<string, unknown>, settings: Phase2SettingsValue): { path: string; assessment: string } {
   return {
     path: text(body.waiverPath) || text(settings.waiverPath),
     assessment: text(body.waiverAssessmentNumber) || text(settings.waiverAssessmentNumber),
-    testCategory: text(body.waiverTestCategory) || text(settings.waiverTestCategory) || 'ACTS-Validator',
   }
 }
 
@@ -462,7 +497,6 @@ async function handleWaiverRun(req: IncomingMessage, res: ServerResponse, settin
     const result = await runScript('waiver_batch.mjs', [
       '--input', inputs.path,
       '--assessment', inputs.assessment,
-      '--test-category', inputs.testCategory,
       dryRun ? '--dry-run' : '--save',
     ], { OH_USERNAME: username, OH_PASSWORD: password }, [username, password], (progress) => {
       updateState({ progress, message: progress.detail || progress.stage })
@@ -495,6 +529,95 @@ async function handleWaiverRun(req: IncomingMessage, res: ServerResponse, settin
   }
 }
 
+const WAIVER_SCAN_PREFIX = 'WAIVER_SCAN_JSON='
+
+function textList(value: unknown): string[] {
+  return Array.isArray(value) ? value.map((entry) => text(entry)).filter((entry) => entry !== '') : []
+}
+
+function parseScanItem(value: unknown): WaiverScanItem | undefined {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const item = value as Record<string, unknown>
+  const testcases = textList(item.testcases)
+  const rawCount = Number(item.caseCount)
+  return {
+    sourceReport: text(item.sourceReport),
+    categoryFolder: text(item.categoryFolder),
+    testCategory: text(item.testCategory),
+    moduleName: text(item.moduleName),
+    testsuite: text(item.testsuite),
+    caseCount: Number.isFinite(rawCount) ? Math.max(0, Math.trunc(rawCount)) : testcases.length,
+    testcases,
+    attachmentPath: text(item.attachmentPath),
+    attachmentKind: text(item.attachmentKind),
+    evidenceRelative: textList(item.evidenceRelative),
+    submissionPath: text(item.submissionPath),
+    ready: item.ready === true,
+    problems: textList(item.problems),
+  }
+}
+
+function parseScanSummary(value: unknown, items: WaiverScanItem[]): WaiverScanSummary {
+  const source = value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const byCategory: Record<string, number> = {}
+  const rawByCategory = source.byCategory
+  if (rawByCategory !== null && typeof rawByCategory === 'object' && !Array.isArray(rawByCategory)) {
+    for (const [key, raw] of Object.entries(rawByCategory as Record<string, unknown>)) {
+      const count = Number(raw)
+      if (Number.isFinite(count)) byCategory[key] = count
+    }
+  }
+  const rawTotal = Number(source.total)
+  const total = Number.isFinite(rawTotal) ? rawTotal : items.length
+  const rawReady = Number(source.ready)
+  const ready = Number.isFinite(rawReady) ? rawReady : items.filter((item) => item.ready).length
+  const rawBlocked = Number(source.blocked)
+  const blocked = Number.isFinite(rawBlocked) ? rawBlocked : Math.max(0, total - ready)
+  return { total, ready, blocked, byCategory }
+}
+
+/** 从脚本输出里取最后一条 `WAIVER_SCAN_JSON=` 结果；识别失败也带 ok:false。 */
+function parseWaiverScan(output: string): { ok: boolean; root?: string; items?: WaiverScanItem[]; summary?: WaiverScanSummary; error?: string } | undefined {
+  for (const line of output.split(/\r?\n/).reverse()) {
+    const parsed = parseStructuredLine<Record<string, unknown>>(line, WAIVER_SCAN_PREFIX)
+    if (!parsed) continue
+    if (parsed.ok !== true) {
+      return { ok: false, error: text(parsed.error) || text(parsed.message) || '识别豁免资料失败。' }
+    }
+    const items = Array.isArray(parsed.items)
+      ? parsed.items.map(parseScanItem).filter((item): item is WaiverScanItem => item !== undefined)
+      : []
+    return { ok: true, root: text(parsed.root), items, summary: parseScanSummary(parsed.summary, items) }
+  }
+  return undefined
+}
+
+/**
+ * 识别豁免资料：调用 `scripts/waiver_batch.mjs --scan`（纯本地，不联网、不登录），
+ * 按目录结构解析出测试套分类、模块、套件、附件与平台提交路径，供设置页「识别」按钮预览。
+ * 失败统一 HTTP 200 + `{ ok:false, error }`，方便前端统一处理。
+ */
+async function handleWaiverScan(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsPlane): Promise<void> {
+  if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: '只支持 POST。' })
+  try {
+    const body = await readBody(req)
+    const path = text(body.waiverPath) || text(currentSettings(settings).waiverPath)
+    if (!path) return sendJson(res, 200, { ok: false, error: '没有填写豁免资料路径，无法识别。' })
+    if (!existsSync(path)) return sendJson(res, 200, { ok: false, error: `豁免资料路径不存在：${path}` })
+    const result = await runScript('waiver_batch.mjs', ['--scan', '--input', path], {}, [])
+    const parsed = parseWaiverScan(result.output)
+    if (!parsed) {
+      const detail = result.output ? `无法解析识别结果：${result.output.slice(-500)}` : '识别进程未返回结果。'
+      return sendJson(res, 200, { ok: false, error: detail })
+    }
+    if (parsed.ok === false) return sendJson(res, 200, { ok: false, error: parsed.error || '识别豁免资料失败。' })
+    sendJson(res, 200, { ok: true, root: parsed.root || path, items: parsed.items || [], summary: parsed.summary })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    sendJson(res, 200, { ok: false, error: `识别豁免资料失败：${message}` })
+  }
+}
+
 function handleStatus(req: IncomingMessage, res: ServerResponse): void {
   if (req.method !== 'GET') return sendJson(res, 405, { ok: false, message: '只支持 GET。' })
   sendJson(res, 200, { ok: true, state: { ...state } })
@@ -515,7 +638,7 @@ async function handleSaveSettings(req: IncomingMessage, res: ServerResponse, set
   try {
     const body = await readBody(req)
     const patch: Phase2SettingsValue = {}
-    for (const field of ['username', 'workbookPath', 'selfCheckPath', 'reportPath', 'mirrorPath', 'contactPhone', 'contactEmail', 'waiverPath', 'waiverAssessmentNumber', 'waiverTestCategory'] as const) {
+    for (const field of ['username', 'workbookPath', 'selfCheckPath', 'reportPath', 'mirrorPath', 'contactPhone', 'contactEmail', 'waiverPath', 'waiverAssessmentNumber'] as const) {
       if (field in body) patch[field] = text(body[field])
     }
     const password = text(body.password)
@@ -548,6 +671,7 @@ export function registerPhase2Routes(ctx: Context, settings: Phase2SettingsPlane
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/save', handler: (req, res) => handleSave(req, res, settings) },
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/waiver/preflight', handler: (req, res) => handleWaiverRun(req, res, settings, 'preflight') },
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/waiver/save', handler: (req, res) => handleWaiverRun(req, res, settings, 'save') },
+    { kind: 'exact', path: '/api/ohos-xts-auto-reporter/waiver/scan', handler: (req, res) => handleWaiverScan(req, res, settings) },
   ]
   // `/settings` 同时服务 GET（读）与 POST（写）：WebRoute 的 exact 只按路径分发，
   // 方法判定在各 handler 内部完成。
@@ -580,7 +704,6 @@ export function registerPhase2Settings(ctx: Context, config: Phase2SettingsValue
     contactEmail: text(config.contactEmail) || '102438@dnake.com',
     waiverPath: text(config.waiverPath),
     waiverAssessmentNumber: text(config.waiverAssessmentNumber),
-    waiverTestCategory: text(config.waiverTestCategory) || 'ACTS-Validator',
   }
   try {
     store.seedIfAbsent(readLegacySettings(blankToUndefined(options.legacyFile)), fromConfig)
