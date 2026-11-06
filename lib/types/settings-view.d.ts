@@ -49,6 +49,7 @@ export type WaiverScanItem = {
     caseCount?: number;
     testcases?: string[];
     attachmentPath?: string;
+    attachmentKind?: string;
     submissionPath?: string;
     ready?: boolean;
     problems?: string[];

@@ -198,15 +198,17 @@ async function checkLayout(reportPath, moduleName, testsuite, evidenceRefs) {
   }
   const archive = path.join(directory, `${testsuite}${ZIP_SUFFIX}`)
   const archiveStat = await fs.stat(archive).catch(() => null)
-  if (!archiveStat?.isFile()) {
-    problems.push(`缺少套件附件 ${path.basename(archive)}（平台只收单文件，需含本套件 txt 与 evidence/）`)
-  }
+  const hasArchive = archiveStat?.isFile() === true
+  // 附件规则：优先用 <套件>-豁免材料.zip；没有 zip 时直接把本份报告 .txt 当附件上传
+  // （平台接受单个 txt 作为豁免材料，见 2026-11-06 用户确认）。因此缺 zip 不再是阻塞项。
+  const attachmentPath = hasArchive ? archive : path.resolve(reportPath)
+  const attachmentKind = hasArchive ? 'zip' : 'txt'
   for (const ref of evidenceRefs) {
     const target = path.join(directory, ref)
     const stat = await fs.stat(target).catch(() => null)
     if (!stat?.isFile()) problems.push(`佐证文件不存在：${ref}`)
   }
-  return { problems, archive, archiveStat }
+  return { problems, attachmentPath, attachmentKind, archive, archiveStat }
 }
 
 /**
@@ -230,7 +232,7 @@ async function inspectReport(reportPath, assessment, testCategory) {
   const evidenceRefs = referencedEvidence(sections[1] ?? [])
   const layout = first.module && first.testsuite
     ? await checkLayout(reportPath, first.module, first.testsuite, evidenceRefs)
-    : { problems: [], archive: '' }
+    : { problems: [], attachmentPath: path.resolve(reportPath), attachmentKind: 'txt' }
   return {
     record: {
       assessmentNumber: assessment,
@@ -240,8 +242,8 @@ async function inspectReport(reportPath, assessment, testCategory) {
       testcases: cases.map((item) => item.testcase),
       caseCount: cases.length,
       waiverReason: reason,
-      attachmentPath: layout.archive,
-      attachmentKind: 'zip',
+      attachmentPath: layout.attachmentPath,
+      attachmentKind: layout.attachmentKind,
       evidenceRelative: evidenceRefs,
       sourceReport: path.resolve(reportPath),
     },
@@ -273,7 +275,7 @@ function scanItemFor(reportPath) {
     caseCount: 0,
     testcases: [],
     attachmentPath: '',
-    attachmentKind: 'zip',
+    attachmentKind: 'txt',
     evidenceRelative: [],
     submissionPath: '',
     ready: false,
@@ -298,6 +300,7 @@ async function scanReports(reports, { scanRoot, assessment }) {
       item.caseCount = inspection.record.caseCount
       item.testcases = inspection.record.testcases
       item.attachmentPath = inspection.record.attachmentPath
+      item.attachmentKind = inspection.record.attachmentKind
       item.evidenceRelative = inspection.record.evidenceRelative
       item.problems.push(...inspection.parseProblems, ...inspection.layoutProblems)
     } catch (error) {

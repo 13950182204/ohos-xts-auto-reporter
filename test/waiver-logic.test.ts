@@ -192,7 +192,7 @@ function runScan(input: string) {
 }
 
 describe('scan layout: <category>/<testsuite>/<testsuite>.txt (ActsValidator 实况)', () => {
-  it('accepts directory name == testsuite and only reports the missing suite zip', () => {
+  it('accepts directory name == testsuite and falls back to the suite txt when zip is absent', () => {
     const root = mkdtempSync(join(tmpdir(), 'waiver-scan-'))
     try {
       const suiteDir = join(root, 'ActsValidator', 'ActsScreenTest')
@@ -211,26 +211,28 @@ describe('scan layout: <category>/<testsuite>/<testsuite>.txt (ActsValidator 实
         '设备不支持该能力，申请豁免。',
       ].join('\n'))
 
-      const missingZip = runScan(root)
-      expect(missingZip.items).toHaveLength(1)
-      expect(missingZip.items[0]).toMatchObject({
+      // 没有 zip 时不再阻塞：直接把该套件的 .txt 报告当附件上传（attachmentKind=txt）。
+      const withoutZip = runScan(root)
+      expect(withoutZip.items).toHaveLength(1)
+      expect(withoutZip.items[0]).toMatchObject({
         testCategory: 'ACTS-Validator',
         categoryFolder: 'ActsValidator',
         moduleName: 'ActsValidator',
         testsuite: 'ActsScreenTest',
         submissionPath: 'ActsValidator/ActsScreenTest/ActsScreenTest.txt',
-        ready: false,
+        attachmentKind: 'txt',
+        ready: true,
       })
-      // 父目录不再误报「应为模块名」；缺附件仍然阻塞（平台草稿必须带 zip）。
-      expect(missingZip.items[0].problems).toEqual([
-        '缺少套件附件 ActsScreenTest-豁免材料.zip（平台只收单文件，需含本套件 txt 与 evidence/）',
-      ])
+      expect(withoutZip.items[0].problems).toEqual([])
+      expect(withoutZip.items[0].attachmentPath).toBe(join(suiteDir, 'ActsScreenTest.txt'))
 
-      // 附件补齐后即可提交。
+      // zip 存在时优先用 zip。
       writeFileSync(join(suiteDir, 'ActsScreenTest-豁免材料.zip'), '')
       const withZip = runScan(root)
       expect(withZip.items[0].ready).toBe(true)
       expect(withZip.items[0].problems).toEqual([])
+      expect(withZip.items[0].attachmentKind).toBe('zip')
+      expect(withZip.items[0].attachmentPath).toBe(join(suiteDir, 'ActsScreenTest-豁免材料.zip'))
     } finally {
       rmSync(root, { recursive: true, force: true })
     }

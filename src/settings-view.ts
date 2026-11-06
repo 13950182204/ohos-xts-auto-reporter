@@ -54,6 +54,7 @@ export type WaiverScanItem = {
   caseCount?: number
   testcases?: string[]
   attachmentPath?: string
+  attachmentKind?: string
   submissionPath?: string
   ready?: boolean
   problems?: string[]
@@ -155,6 +156,13 @@ const TOKENS = `
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+function fileBasename(value: unknown): string {
+  const text = str(value)
+  if (!text) return ''
+  const parts = text.split(/[\\/]/)
+  return parts[parts.length - 1] ?? ''
 }
 
 function num(value: unknown): number | undefined {
@@ -277,6 +285,10 @@ function scanPanel(scan: WaiverScan): ReactElement {
         createElement('span', { className: 'oh-xts__muted' }, `${num(item.caseCount) ?? 0} 条用例`),
       ),
       item.submissionPath ? createElement('p', { className: 'oh-xts__path' }, `提交路径：${item.submissionPath}`) : null,
+      fileBasename(item.attachmentPath)
+        ? createElement('p', { className: 'oh-xts__path' },
+          `附件：${fileBasename(item.attachmentPath)}${str(item.attachmentKind) === 'txt' ? '（txt 直传）' : str(item.attachmentKind) === 'zip' ? '（zip）' : ''}`)
+        : null,
       problems.length > 0 ? createElement('p', { className: 'oh-xts__problem' }, problems.join('；')) : null,
       )
     })),
@@ -429,7 +441,7 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
     createElement('div', { className: 'oh-xts__section' },
       sectionHead(
         '豁免资料',
-        '从指定目录读取 .txt 豁免报告，按目录自动识别测试套分类、模块与平台提交路径，再按测评编号反查系统类型/版本后逐条保存草稿。目录规范：<分类>/<模块>/<套件>.txt + <套件>-豁免材料.zip + evidence/。',
+        '从指定目录读取 .txt 豁免报告，按目录自动识别测试套分类、模块与平台提交路径，再按测评编号反查系统类型/版本后逐条保存草稿。目录规范：<分类>/<模块>/<套件>.txt + evidence/，附件优先 <套件>-豁免材料.zip，没有 zip 时直接上传该套件的 .txt。',
       ),
       createElement('div', { className: 'oh-xts__grid' },
         field({
