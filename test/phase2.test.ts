@@ -108,6 +108,9 @@ describe('phase2 safety boundary', () => {
     expect(client).not.toContain("waiverTestCategory")
     expect(client).toContain('识别目录')
     expect(client).toContain('waiver/scan')
+    // 宿主半区未重启（接口未注册，DSH 回纯文本 401/404）时，提示必须可执行，
+    // 不能只说「无法连接」——否则用户无法判断是重启没做还是网络问题。
+    expect(client).toContain('重启 DSH Desktop 后重试')
   })
 
   it('rejects a missing workbook before any browser action', async () => {

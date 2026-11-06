@@ -27,16 +27,35 @@ const EMPTY_VALUES: SettingsFormValues = {
 type ApiResult = { ok: boolean; message?: string }
 
 async function request<T extends ApiResult>(path: string, method: 'GET' | 'POST', body?: Record<string, unknown>): Promise<T> {
+  let response: Response
   try {
-    const response = await fetch(`/api/ohos-xts-auto-reporter/${path}`, {
+    response = await fetch(`/api/ohos-xts-auto-reporter/${path}`, {
       method,
       headers: body ? { 'content-type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     })
-    return await response.json() as T
   } catch {
-    return { ok: false, message: '无法连接 DSH Host。' } as T
+    return { ok: false, message: '无法连接 DSH Host（网络请求失败，稍后重试）。' } as T
   }
+  const raw = await response.text().catch(() => '')
+  try {
+    const parsed = JSON.parse(raw) as T
+    if (parsed && typeof parsed === 'object') return parsed
+  } catch {
+    // 非 JSON 响应，落到下面的分支给出可执行的提示
+  }
+  // DSH 对「未注册的插件路由」返回纯文本 401/404：典型成因是宿主半区仍是旧版本
+  // （桌面端热更新只替换浏览器半区，宿主半区要重启才更新）。
+  if (response.status === 401 || response.status === 404) {
+    return {
+      ok: false,
+      message: `Host 上没有这个接口（HTTP ${response.status}）。宿主半区可能仍是旧版本，重启 DSH Desktop 后重试。`,
+    } as T
+  }
+  return {
+    ok: false,
+    message: `Host 返回了无法解析的响应（HTTP ${response.status}）${raw ? `：${raw.slice(0, 120)}` : ''}`,
+  } as T
 }
 
 function displayValue(value: unknown): string {
