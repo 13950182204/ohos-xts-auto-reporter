@@ -83,18 +83,92 @@ description: 自动化 OpenHarmony 兼容性平台测试豁免（waiver）草稿
 5. **保存草稿**：只点击精确的 `保存` 或 `暂存` 控件。确认成功消息为 `保存成功` 或 `暂存成功`；不明确则停下，把页面快照留给用户判断。
 6. **收尾**：报告产物（草稿 ID/待提交状态、证据文件、测评编号）。不要点击任何提交类按钮。
 
-## 目录批处理（多个 .txt 报告）
+## 豁免资料目录与提交模型（强制）
 
-用 `scripts/process_directory.py` 解析豁免目录（纯本地解析，无浏览器/凭据依赖）：
+**一个模块的一个 Testsuite = 一个 `.txt` + 一个 `-豁免材料.zip` + 一条平台申请，各自独立豁免单号。禁止把同一模块的多个 Testsuite 合并进一个文件，也禁止把整个模块的失败用例塞进一条申请。** 模块相同、Testsuite 不同 → 必须拆成不同文件、不同附件、不同申请。
+
+### 目录布局
+
+```
+exemption/<测试大项>/<模块名>/
+├── <套件>.txt                 # 一个 Testsuite 的失败用例 + 失败原因 + 豁免理由（三节式）
+├── <套件>-豁免材料.zip        # 平台附件（单文件）：本套件 txt + 本套件 evidence/
+└── evidence/
+    ├── <套件>-report.txt      # 报告摘录：模块/套件/用例/结果/耗时
+    ├── <套件>-rerun.log       # 本机复跑日志摘录（OHOS_REPORT_RESULT 行）
+    └── <套件>-hilog.txt       # 按需：关键 hilog 摘录
+```
+
+- 测试大项目录名 = 平台 `test_type`：`Acts` / `ActsValidator` / `Hats` / `Dcts` / `Ssts`（历史目录若是 `ACTS` 等写法，解析时按 `--test-category` 显式传平台字典值）。
+- 文件名必须等于 Testsuite 名（去掉 `Test` 也不改：以报告的 `testsuite name` 为准），否则解析器按「布局不符合规范」报错。
+- 父目录名必须等于 Module 名（`result/<模块>.xml` 的 `<模块>`）。
+
+### `.txt` 三节式（平台按此解析）
+
+```
+1. 失败用例
+测试设备：<产品> <型号>，SN <serial>，<OS 版本>，屏幕 <WxH>，density <x>
+测试报告：<report.zip 内的报告目录/序号>
+佐证材料（相对本文件路径）：
+- evidence/<套件>-report.txt：报告摘录
+- evidence/<套件>-rerun.log：本机复跑日志摘录
+- <模块>#<套件>#<用例>（报告耗时 x s）
+- <模块>#<套件>#<用例>
+
+2. 失败原因
+<证据链：报告 hilog / 复跑日志 / 源码定位 / 数值计算>
+
+3. 申请豁免理由
+<建议 100–400 字（平台上限 5000）：为什么属测试侧或环境侧，与产品实现无关；低于 80 字视为说明不清>
+
+```
+
+- 用例行只写裸用例名（`模块#套件#用例`）；行尾允许 `（报告耗时 x s）` 尾注，解析时会剥掉，**不会**进入平台的 Testcase 字段。
+- 佐证一律用**相对本文件的路径**引用，且文件必须真实存在；需要附加日志时放进 `evidence/`，不要写成盘符绝对路径。
+- 附件 zip 内必须包含本套件 `.txt` 与 `evidence/` 下本套件用到的文件。
+
+### 平台字段映射（创建豁免申请）
+
+| 平台字段 | 取值 |
+|---|---|
+| 测评编号 | 人工提供的最新编号（绝不沿用旧任务） |
+| 操作系统类型 / 版本号 | 按测评编号反查，**不写死** |
+| 测试套分类 | `ACTS`（或 `test_category`） |
+| 模块名称(Module) | `<模块名>` |
+| 测试套名称(Testsuite) | `<套件名>`——**必填且只能一个**；留空意味着整个模块豁免，本规范禁止 |
+| 测试用例名称(Testcase) | 本套件失败用例裸名，英文逗号连接（1 条也照写） |
+| 豁免原因 | 第 3 节全文（缺失时退回第 2 节） |
+| 豁免附件 | `<套件>-豁免材料.zip`（单文件；不要传目录） |
+
+- 查重键 = 模块 + 套件 + 用例串；命中 status `0`/`1`/`2` 时报告并跳过，仅 `3` 允许重新申请。
+- 每条申请完成后记录自己的豁免单号/草稿 ID，**不要**用一个单号代表整个模块。
+
+### 校验（提交前必跑）
 
 ```bash
+# 严格模式：布局/三节/evidence/zip 不符即报错退出
 python3 {{SKILLS_DIR}}/openharmony-waiver-draft/scripts/process_directory.py \
-  --report-dir '/mnt/d/ohos/XTS6.1/1AADB/A333/exemption' \
+  --report-dir '/mnt/d/ohos/XTS6.1/DHong/DH-76AM-HS26A/exemption/Acts' \
+  --assessment-number <测评编号> --test-category ACTS \
   --output-dir /tmp/waiver-records
 ```
 
-- 每个 `.txt` 文件 = 一条豁免记录（`模块#套件#用例` 解析；同一文件内所有用例 ID 用英文逗号合并进一个 Testcase 字段；完整豁免原因保留在一个 reason 字段；不拆分文件内编号小节）。
+输出形如「34 条独立豁免记录（34 个模块+套件，44 条用例）」并逐条标注 `[附件:zip]`（数量随资料变化，不是固定值）。解析器强制：一个 `.txt` 只含一个模块 + 一个套件，混用直接报「请拆分文件」。
+
+## 目录批处理（多个 .txt 报告）
+
+用 `scripts/process_directory.py` 解析豁免目录（纯本地解析，无浏览器/凭据依赖），**一条记录对应一条申请**：
+
+```bash
+python3 {{SKILLS_DIR}}/openharmony-waiver-draft/scripts/process_directory.py \
+  --report-dir '/mnt/d/ohos/XTS6.1/DHong/DH-76AM-HS26A/exemption/Acts' \
+  --assessment-number <测评编号> --test-category ACTS \
+  --output-dir /tmp/waiver-records
+```
+
+- 每条记录 = 一个模块的一个 Testsuite（`模块#套件#用例,用例,…`）；附件默认取同目录 `<套件>-豁免材料.zip`，缺失才退回 `.txt` 并记为布局问题。
 - 输出目录内每条记录一个 JSON；`--assessment-number` 缺省读 `OH_ASSESSMENT_NUMBER` 环境变量。输出的记录**不含** `systemType` / `osVersion`（由测评编号反查）。
+- 旧目录（一个 .txt 混多个套件、无 zip）可用 `--allow-legacy` 解析，仅警告；**正式提交前必须整理成上面的布局**。
 - 然后对每条 JSON **依次**执行上面的工具流程（查重命中 status 0 时跳过该条继续下一条）；任何一条查重不完整、验证挑战、解析错误或保存错误 → **停止整个批次**，报告已处理与剩余记录。
 
 ## 失败处理

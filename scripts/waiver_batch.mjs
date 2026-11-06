@@ -71,8 +71,12 @@ async function listReports(input) {
     const entries = await fs.readdir(directory, { withFileTypes: true })
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const full = path.join(directory, entry.name)
-      if (entry.isDirectory()) await walk(full)
-      else if (entry.isFile() && entry.name.toLowerCase().endsWith('.txt')) found.push(full)
+      // evidence/ 放的是佐证日志，不是豁免报告；不要当成报告去创建草稿。
+      if (entry.isDirectory()) {
+        if (entry.name !== 'evidence') await walk(full)
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.txt')) {
+        found.push(full)
+      }
     }
   }
   await walk(input)
@@ -98,35 +102,87 @@ function splitSections(lines) {
   return sections
 }
 
+const TRAILING_NOTE_RE = /[（(][^（）()]*[)）]\s*$/
+const EVIDENCE_RE = /^-\s+(evidence\/[^\s：:]+)/
+const ZIP_SUFFIX = '-豁免材料.zip'
+
 function parseCases(lines) {
   const cases = []
   for (const line of lines) {
     const match = CASE_RE.exec(line.trim())
-    if (match) cases.push({ module: match[1], testsuite: match[2], testcase: match[3].trim() })
+    if (!match) continue
+    // 用例行允许「（报告耗时 x s）」尾注；提交给平台的 Testcase 只要裸用例名。
+    const testcase = match[3].replace(TRAILING_NOTE_RE, '').trim()
+    cases.push({ module: match[1], testsuite: match[2], testcase })
   }
   return cases
+}
+
+function referencedEvidence(lines) {
+  const refs = []
+  for (const line of lines) {
+    const match = EVIDENCE_RE.exec(line.trim())
+    if (match && !refs.includes(match[1])) refs.push(match[1])
+  }
+  return refs
+}
+
+/**
+ * 豁免资料布局校验（与闭环插件 scripts/verify_waiver_layout.py 同一套规则）：
+ * 一个模块的一个 Testsuite = 一个 <套件>.txt + 一个 <套件>-豁免材料.zip。
+ */
+async function checkLayout(reportPath, moduleName, testsuite, evidenceRefs) {
+  const problems = []
+  const directory = path.dirname(reportPath)
+  const expectedName = `${testsuite}.txt`
+  if (path.basename(reportPath) !== expectedName) {
+    problems.push(`文件名应为 ${expectedName}（当前 ${path.basename(reportPath)}）`)
+  }
+  if (path.basename(directory) !== moduleName) {
+    problems.push(`父目录应为模块名 ${moduleName}（当前 ${path.basename(directory)}）`)
+  }
+  const archive = path.join(directory, `${testsuite}${ZIP_SUFFIX}`)
+  const archiveStat = await fs.stat(archive).catch(() => null)
+  if (!archiveStat?.isFile()) {
+    problems.push(`缺少套件附件 ${path.basename(archive)}（平台只收单文件，需含本套件 txt 与 evidence/）`)
+  }
+  for (const ref of evidenceRefs) {
+    const target = path.join(directory, ref)
+    const stat = await fs.stat(target).catch(() => null)
+    if (!stat?.isFile()) problems.push(`佐证文件不存在：${ref}`)
+  }
+  return { problems, archive, archiveStat }
 }
 
 /** 单个 .txt → 一条记录；与 process_directory.py 的解析规则一致。 */
 async function parseReport(reportPath, assessment, testCategory) {
   const text = await fs.readFile(reportPath, 'utf8')
-  const sections = splitSections(text.split(/\r?\n/))
+  const lines = text.split(/\r?\n/)
+  const sections = splitSections(lines)
   const cases = parseCases(sections[1] ?? [])
   if (cases.length === 0) throw new Error(`报告里没有失败用例：${reportPath}`)
   const first = cases[0]
   if (cases.some((item) => item.module !== first.module || item.testsuite !== first.testsuite)) {
-    throw new Error(`同一报告里混有不同模块/测试套：${reportPath}`)
+    throw new Error(`同一报告里混有不同模块/测试套：${reportPath}（一个 .txt 只能是一个模块的一个 Testsuite，请拆分文件）`)
   }
   const reason = cleanText(sections[3] ?? []) || cleanText(sections[2] ?? [])
   if (!reason) throw new Error(`报告缺少豁免原因：${reportPath}`)
+  const evidenceRefs = referencedEvidence(sections[1] ?? [])
+  const layout = await checkLayout(reportPath, first.module, first.testsuite, evidenceRefs)
+  if (layout.problems.length > 0) {
+    throw new Error(`豁免资料布局不符合规范：${layout.problems.join('；')}（${reportPath}）`)
+  }
   return {
     assessmentNumber: assessment,
     testCategory,
     moduleName: first.module,
     testsuite: first.testsuite,
     testcases: cases.map((item) => item.testcase),
+    caseCount: cases.length,
     waiverReason: reason,
-    attachmentPath: path.resolve(reportPath),
+    attachmentPath: layout.archive,
+    attachmentKind: 'zip',
+    evidenceRelative: evidenceRefs,
     sourceReport: path.resolve(reportPath),
   }
 }

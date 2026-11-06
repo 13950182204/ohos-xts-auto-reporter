@@ -61,6 +61,20 @@ export function validateInput(input) {
     || input.testcases.some((testcase) => typeof testcase !== 'string' || !testcase.trim()))) {
     throw new Error('Input field testcases must be a non-empty string array when provided');
   }
+  // 豁免资料规范（与闭环插件一致）：一条申请 = 一个模块的一个 Testsuite。
+  // 平台 Testsuit 只接受单个套件名，Testcase 是英文逗号分隔的裸用例名；
+  // 有 testcases 就必须给 testsuite，否则平台会退化成「整个模块/整个套件豁免」，扩大豁免范围。
+  const testsuite = input.testsuite?.trim() || '';
+  const testcases = input.testcases?.map((testcase) => testcase.trim()) || [];
+  if (testsuite.includes(',')) {
+    throw new Error('Input field testsuite must be a single test suite name (no comma); split it into separate waivers');
+  }
+  if (testcases.length > 0 && !testsuite) {
+    throw new Error('Input field testsuite is required when testcases is provided');
+  }
+  if (testcases.some((testcase) => testcase.includes(',') || testcase.includes('#'))) {
+    throw new Error('Input field testcases must contain bare test case names (split by comma outside, not inside an entry)');
+  }
   if (!path.isAbsolute(input.attachmentPath)) {
     throw new Error('attachmentPath must be an absolute path');
   }

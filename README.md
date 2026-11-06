@@ -71,15 +71,34 @@ export OH_PASSWORD='...'          # 新轮换密码
 
 单条模式：准备输入 JSON（assessmentNumber/systemType/osVersion/testCategory/moduleName/testsuite/testcases/waiverReason/attachmentPath）后直接说「保存豁免草稿」。
 
-目录批处理（每 `.txt` 一条记录，无浏览器依赖的纯解析）：
+## 豁免资料规范（强制）
+
+**一个模块的一个 Testsuite = 一个 `.txt` + 一个 `-豁免材料.zip` + 一条平台申请，各自独立豁免单号。** 同一模块有多个 Testsuite 必须拆成多个文件、多个附件、多条申请，禁止合并成一条。
+
+```
+exemption/<测试大项>/<模块名>/
+├── <套件>.txt                 # 三节式：1. 失败用例 / 2. 失败原因 / 3. 申请豁免理由
+├── <套件>-豁免材料.zip        # 平台附件（单文件）：本套件 txt + 本套件 evidence/
+└── evidence/
+    ├── <套件>-report.txt      # 报告摘录
+    ├── <套件>-rerun.log       # 本机复跑日志摘录
+    └── <套件>-hilog.txt       # 按需
+```
+
+- 提交前用解析器做严格校验：文件名必须等于 Testsuite 名、父目录必须等于 Module 名、`.txt` 只能含一个模块的一个套件、附件 zip 必须存在、正文用相对路径引用的 `evidence/` 文件必须真实存在；不符即报「豁免资料布局不符合规范」。
+- 用例行 `模块#套件#用例`（可带 `（报告耗时 x s）` 尾注，解析时剥掉）；平台 Testcase 填逗号分隔的裸用例名，Testsuite 必填且只能一个。
+- 旧格式（一文件混多套件、无 zip）可用 `--allow-legacy` 解析，仅警告；正式提交前必须整理成上面的布局。
+
+目录批处理（每份 `.txt` = 一个模块的一个 Testsuite，无浏览器依赖的纯解析）：
 
 ```bash
 python3 skills/openharmony-waiver-draft/scripts/process_directory.py \
-  --report-dir '/mnt/d/ohos/XTS6.1/1AADB/A333/exemption' \
+  --report-dir 'D:/ohos/XTS6.1/DHong/DH-76AM-HS26A/exemption/Acts' \
+  --assessment-number <测评编号> --test-category ACTS \
   --output-dir /tmp/waiver-records
 ```
 
-导出的每条 JSON 由模型按 SKILL.md 流程逐条执行（查重命中即跳过；任一失败停止整批）。
+输出形如「34 条独立豁免记录（34 个模块+套件，44 条用例）」并逐条标注 `[附件:zip]`（数字随资料变化，不是固定值）。导出的每条 JSON 由模型按 SKILL.md 流程逐条执行（查重命中即跳过；任一失败停止整批）。
 
 ## 安装
 
@@ -166,7 +185,7 @@ pnpm test:python    # process_directory.py 解析单测
 | 浏览器驱动 | 原 Playwright 运行时（waiver.js/run_draft.sh）先改成 browser_* 手册；2026-10 新增 `waiver_draft` Host 工具（`scripts/waiver_draft.mjs`，Playwright headless），桌面可用，系统类型/版本号按测评编号反查 |
 | 门禁保留 | assessmentNumber 缺失即停；账号密码来自设置页或 OH_USERNAME/OH_PASSWORD（固定中文消息） |
 | 硬边界保留 | 绝不提交、只点保存/暂存、查重命中 status 0/1/2 即停、验证码不绕过 |
-| 批处理改造 | process_directory.py 去掉 run_draft.sh 调用，改为纯解析 + 导出 JSON（--output-dir） |
+| 批处理改造 | process_directory.py 去掉 run_draft.sh 调用，改为纯解析 + 导出 JSON（--output-dir）；2026-11 起强制「一个模块的一个 Testsuite = 一个 txt + 一个 zip + 一条申请」，布局不符直接报错 |
 | 附件策略 | browser 工具无文件上传能力：平台要求附件时请用户窗口内手动选择；可选时在 waiverReason 注明证据路径 |
 | 剔除 | agents/openai.yaml（codex 专用）、Playwright 运行时（54MB 依赖不进了） |
 | 中文本地化 | SKILL.md 全中文 |

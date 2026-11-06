@@ -78,6 +78,62 @@ class ParseTests(unittest.TestCase):
                 pd.parse_report(report, "OHC-1", "ACTS-Validator")
 
 
+class SuiteLayoutTests(unittest.TestCase):
+    def _write_suite(self, root: Path, module: str = "ActsDemo", suite: str = "DemoSuite") -> Path:
+        module_dir = root / module
+        evidence = module_dir / "evidence"
+        evidence.mkdir(parents=True, exist_ok=True)
+        report = module_dir / f"{suite}.txt"
+        report.write_text("\n".join([
+            "1. 失败用例",
+            f"- {module}#{suite}#CaseA（报告耗时 1.0s）",
+            f"- {module}#{suite}#CaseB",
+            "佐证材料（相对本文件路径）：",
+            f"- evidence/{suite}-report.txt：报告摘录",
+            "2. 失败原因",
+            "原因",
+            "3. 申请豁免理由",
+            "理由",
+        ]), encoding="utf-8")
+        (evidence / f"{suite}-report.txt").write_text("report", encoding="utf-8")
+        import zipfile
+        with zipfile.ZipFile(module_dir / f"{suite}-豁免材料.zip", "w") as archive:
+            archive.write(report, arcname=report.name)
+            archive.write(evidence / f"{suite}-report.txt", arcname=f"evidence/{suite}-report.txt")
+        return report
+
+    def test_case_names_drop_trailing_note(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self._write_suite(Path(tmp))
+            record = pd.parse_report(report, "OHC-1", "ACTS")[0]
+            self.assertEqual(record["testcases"], ["CaseA", "CaseB"])
+
+    def test_attachment_prefers_suite_zip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self._write_suite(Path(tmp))
+            record = pd.parse_report(report, "OHC-1", "ACTS", strict_layout=True)[0]
+            self.assertEqual(record["attachmentKind"], "zip")
+            self.assertTrue(record["attachmentPath"].endswith("DemoSuite-豁免材料.zip"))
+            self.assertEqual(record["layoutProblems"], [])
+
+    def test_strict_layout_requires_zip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self._write_suite(Path(tmp))
+            (report.parent / "DemoSuite-豁免材料.zip").unlink()
+            with self.assertRaises(ValueError):
+                pd.parse_report(report, "OHC-1", "ACTS", strict_layout=True)
+            relaxed = pd.parse_report(report, "OHC-1", "ACTS")[0]
+            self.assertEqual(relaxed["attachmentKind"], "txt")
+            self.assertTrue(relaxed["layoutProblems"])
+
+    def test_strict_layout_rejects_misnamed_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self._write_suite(Path(tmp))
+            renamed = report.rename(report.with_name("wrong-name.txt"))
+            with self.assertRaises(ValueError):
+                pd.parse_report(renamed, "OHC-1", "ACTS", strict_layout=True)
+
+
 class GateTests(unittest.TestCase):
     def test_missing_assessment_number_is_a_gate(self):
         os.environ.pop("OH_ASSESSMENT_NUMBER", None)
