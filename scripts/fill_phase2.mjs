@@ -950,7 +950,7 @@ async function main() {
     process.exitCode = 2;
     return;
   }
-  const derivedAttachments = derivePhase2AttachmentPaths(options.workbook);
+  const derivedAttachments = await derivePhase2AttachmentPaths(options.workbook);
   process.env.OH_SELF_CHECK_PATH = derivedAttachments.selfCheckPath;
   process.env.OH_REPORT_PATH = derivedAttachments.reportPath;
   process.env.OH_MIRROR_PATH = '';

@@ -15,7 +15,7 @@ try {
     console.log(`PHASE2_PROGRESS=${JSON.stringify({ percent: 10, stage: '扫描评测目录', detail: `正在预检 ${item.name}。`, itemIndex: index + 1, itemTotal: discovery.items.length, itemPercent: 10, workbookPath: item.workbookPath })}`);
     try {
       const { record } = await readPhase2Workbook(item.workbookPath);
-      const attachments = derivePhase2AttachmentPaths(item.workbookPath);
+      const attachments = await derivePhase2AttachmentPaths(item.workbookPath);
       const attachmentErrors = await validatePhase2Attachments(attachments);
       const devices = record.type === 'release' ? record.devices : [record];
       items.push({

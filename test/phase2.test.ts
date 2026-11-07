@@ -127,13 +127,26 @@ describe('phase2 safety boundary', () => {
     }
   })
 
-  it('derives attachments from the workbook directory and leaves mirror deferred', async () => {
+  it('derives attachments from the workbook directory, falling back to scanned files', async () => {
     const logic = await import('../scripts/phase2_logic.mjs')
-    expect(logic.derivePhase2AttachmentPaths('D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony兼容性申请资料.xlsx')).toEqual({
-      selfCheckPath: 'D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx',
-      reportPath: 'D:\\ohos\\XTS6.1\\DHong\\A537\\report\\report.zip',
+    expect(await logic.derivePhase2AttachmentPaths('D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony兼容性申请资料.xlsx')).toEqual({
+      selfCheckPath: '/mnt/d/ohos/XTS6.1/DHong/A537/OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx',
+      reportPath: '/mnt/d/ohos/XTS6.1/DHong/A537/report/report.zip',
       mirrorPath: '',
     })
+
+    const directory = await mkdtemp(join(tmpdir(), 'ohos-phase2-attach-'))
+    try {
+      await writeFile(join(directory, 'OpenHarmony兼容性申请资料.xlsx'), 'placeholder')
+      await writeFile(join(directory, 'OpenHarmony设备兼容性规范6.x自检表_标准系统.xlsx'), 'pcs')
+      await mkdir(join(directory, 'report'), { recursive: true })
+      await writeFile(join(directory, 'report', 'report-20261106.zip'), 'zip')
+      const derived = await logic.derivePhase2AttachmentPaths(join(directory, 'OpenHarmony兼容性申请资料.xlsx'))
+      expect(derived.selfCheckPath).toBe(join(directory, 'OpenHarmony设备兼容性规范6.x自检表_标准系统.xlsx'))
+      expect(derived.reportPath).toBe(join(directory, 'report', 'report-20261106.zip'))
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 
   it('treats a directory that itself contains the exact workbook as one task', async () => {
@@ -205,8 +218,8 @@ describe('phase2 safety boundary', () => {
       const sheet = workbook.getWorksheet('模组开发板')
       for (const [cell, value] of Object.entries({
         C8: '标准系统', C9: 'OpenHarmony 6.1 Release', C10: 'A333', C11: 'A333', C12: 'A333',
-        C13: 'arm64', C14: '支持应用安装', C15: '带屏', C16: '描述', C17: join(directory, 'A333.png'),
-        C18: '发证即公示', C22: '1.0.0', C23: '2026/08/28', C24: 'release', C25: 'hash', C26: join(directory, 'pcid.sc'),
+        C13: 'arm64', C14: '支持应用安装', C15: '带屏', C16: '描述',
+        C17: '发证即公示', C20: '1.0.0', C21: '2026/08/28', C22: 'release', C23: 'hash',
       })) sheet.getCell(cell).value = value
       await workbook.xlsx.writeFile(workbookPath)
 
@@ -320,7 +333,7 @@ describe('phase2 safety boundary', () => {
     }
   })
 
-  it('requires real appearance and PCID.sc files for a filled board', async () => {
+  it('derives the appearance image and pcid.sc from the workbook directory', async () => {
     const logic = await import('../scripts/phase2_logic.mjs')
     const directory = await mkdtemp(join(tmpdir(), 'ohos-phase2-'))
     const file = join(directory, 'application.xlsx')
@@ -332,16 +345,19 @@ describe('phase2 safety boundary', () => {
       const sheet = workbook.getWorksheet('模组开发板')
       for (const [cell, value] of Object.entries({
         C8: '标准系统', C9: 'OpenHarmony 6.1 Release', C10: 'A333', C11: '76A', C12: 'A333',
-        C13: 'arm64', C14: '支持应用安装', C15: '带屏', C16: '描述', C17: join(directory, 'missing.png'),
-        C18: '发证即公示', C22: '1.0.0', C23: '2026/01/01', C24: 'release', C25: 'hash', C26: join(directory, 'missing.sc'),
+        C13: 'arm64', C14: '支持应用安装', C15: '带屏', C16: '描述',
+        C17: '发证即公示', C20: '1.0.0', C21: '2026/01/01', C22: 'release', C23: 'hash',
       })) sheet.getCell(cell).value = value
       await workbook.xlsx.writeFile(file)
-      await expect(logic.readPhase2Workbook(file)).rejects.toThrow('不存在')
-      await writeFile(join(directory, 'missing.png'), 'not-an-image')
-      await writeFile(join(directory, 'missing.sc'), 'pcid')
-      const { record } = await logic.readPhase2Workbook(file)
-      expect(record.type).toBe('board')
-      expect(record.pcidScPath).toContain('missing.sc')
+
+      await expect(logic.readPhase2Workbook(file)).rejects.toThrow('外观图')
+      await expect(logic.readPhase2Workbook(file)).rejects.toThrow('PCID.sc')
+
+      await writeFile(join(directory, 'A333.png'), 'png')
+      await writeFile(join(directory, 'pcid.sc'), 'pcid')
+      const resolved = await logic.readPhase2Workbook(file)
+      expect(resolved.record.appearancePaths).toEqual([join(directory, 'A333.png')])
+      expect(resolved.record.pcidScPath).toBe(join(directory, 'pcid.sc'))
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

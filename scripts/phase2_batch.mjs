@@ -141,7 +141,7 @@ async function main() {
     const taskIndex = ++taskCount;
     try {
       const input = await readPhase2Workbook(item.workbookPath);
-      const attachments = derivePhase2AttachmentPaths(item.workbookPath);
+      const attachments = await derivePhase2AttachmentPaths(item.workbookPath);
       const errors = await validatePhase2Attachments(attachments);
       const preparedItem = { ...item, taskIndex, input, attachments, errors };
       prepared.push(preparedItem);

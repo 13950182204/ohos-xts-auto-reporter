@@ -34,14 +34,12 @@ const BOARD_FIELDS = Object.freeze([
   ['supportsInstall', '是否支持应用安装', 'C14'],
   ['withScreen', '是否带屏', 'C15'],
   ['description', '基本信息描述', 'C16'],
-  ['appearancePaths', '外观图路径', 'C17'],
-  ['publicity', '是否允许公示', 'C18'],
-  ['publicizeDate', '最早公示日期', 'C19'],
-  ['softwareVersion', '软件版本号', 'C22'],
-  ['securityPatch', '安全补丁标签', 'C23'],
-  ['versionId', '版本Id', 'C24'],
-  ['versionHash', '版本Hash', 'C25'],
-  ['pcidScPath', 'PCID.sc路径', 'C26'],
+  ['publicity', '是否允许公示', 'C17'],
+  ['publicizeDate', '最早公示日期', 'C18'],
+  ['softwareVersion', '软件版本号', 'C20'],
+  ['securityPatch', '安全补丁标签', 'C21'],
+  ['versionId', '版本Id', 'C22'],
+  ['versionHash', '版本Hash', 'C23'],
 ]);
 
 const COMMERCIAL_FIELDS = Object.freeze([
@@ -60,14 +58,12 @@ const COMMERCIAL_FIELDS = Object.freeze([
   ['supportsInstall', '是否支持应用安装', 'C20'],
   ['withScreen', '是否带屏', 'C21'],
   ['description', '基本信息描述', 'C22'],
-  ['appearancePaths', '外观图路径', 'C23'],
-  ['publicity', '是否允许公示', 'C24'],
-  ['publicizeDate', '最早公示日期', 'C25'],
-  ['softwareVersion', '软件版本号', 'C28'],
-  ['securityPatch', '安全补丁标签', 'C29'],
-  ['versionId', '版本Id', 'C30'],
-  ['versionHash', '版本Hash', 'C31'],
-  ['pcidScPath', 'PCID.sc路径', 'C32'],
+  ['publicity', '是否允许公示', 'C23'],
+  ['publicizeDate', '最早公示日期', 'C24'],
+  ['softwareVersion', '软件版本号', 'C26'],
+  ['securityPatch', '安全补丁标签', 'C27'],
+  ['versionId', '版本Id', 'C28'],
+  ['versionHash', '版本Hash', 'C29'],
 ]);
 
 const RELEASE_FIELDS = Object.freeze([
@@ -75,27 +71,24 @@ const RELEASE_FIELDS = Object.freeze([
   ['osVersion', '操作系统版本号', 'C9'],
   ['name', '发行版名称(传播名)', 'C10'],
   ['description', '基本信息描述', 'C11'],
-  ['appearancePaths', '外观图路径', 'C12'],
-  ['publicity', '是否允许公示', 'C13'],
-  ['publicizeDate', '最早公示日期', 'C14'],
-  ['device1ModuleModel', '设备1模组型号', 'B17'],
-  ['device2ModuleModel', '设备2模组型号', 'F17'],
-  ['device1ChipModel', '设备1芯片型号', 'B18'],
-  ['device2ChipModel', '设备2芯片型号', 'F18'],
-  ['device1CpuArchitecture', '设备1CPU架构', 'B19'],
-  ['device2CpuArchitecture', '设备2CPU架构', 'F19'],
-  ['device1SupportsInstall', '设备1是否支持应用安装', 'B20'],
-  ['device2SupportsInstall', '设备2是否支持应用安装', 'F20'],
-  ['device1WithScreen', '设备1是否带屏', 'B21'],
-  ['device2WithScreen', '设备2是否带屏', 'F21'],
-  ['softwareVersion', '软件版本号', 'C24'],
-  ['securityPatch', '安全补丁标签', 'C25'],
-  ['device1VersionId', '设备1版本Id', 'B27'],
-  ['device2VersionId', '设备2版本Id', 'F27'],
-  ['device1VersionHash', '设备1版本Hash', 'B28'],
-  ['device2VersionHash', '设备2版本Hash', 'F28'],
-  ['device1PcidScPath', '设备1PCID.sc路径', 'B29'],
-  ['device2PcidScPath', '设备2PCID.sc路径', 'F29'],
+  ['publicity', '是否允许公示', 'C12'],
+  ['publicizeDate', '最早公示日期', 'C13'],
+  ['device1ModuleModel', '设备1模组型号', 'B16'],
+  ['device2ModuleModel', '设备2模组型号', 'F16'],
+  ['device1ChipModel', '设备1芯片型号', 'B17'],
+  ['device2ChipModel', '设备2芯片型号', 'F17'],
+  ['device1CpuArchitecture', '设备1CPU架构', 'B18'],
+  ['device2CpuArchitecture', '设备2CPU架构', 'F18'],
+  ['device1SupportsInstall', '设备1是否支持应用安装', 'B19'],
+  ['device2SupportsInstall', '设备2是否支持应用安装', 'F19'],
+  ['device1WithScreen', '设备1是否带屏', 'B20'],
+  ['device2WithScreen', '设备2是否带屏', 'F20'],
+  ['softwareVersion', '软件版本号', 'C23'],
+  ['securityPatch', '安全补丁标签', 'C24'],
+  ['device1VersionId', '设备1版本Id', 'B26'],
+  ['device2VersionId', '设备2版本Id', 'F26'],
+  ['device1VersionHash', '设备1版本Hash', 'B27'],
+  ['device2VersionHash', '设备2版本Hash', 'F27'],
 ]);
 
 const FIELD_LAYOUTS = Object.freeze({
@@ -107,22 +100,22 @@ const FIELD_LAYOUTS = Object.freeze({
 const LEGACY_HEADERS = Object.freeze({
   [SHEETS.board]: [
     '测评编号', '操作系统类型', '操作系统版本号', '模组/开发板名称(传播名)', '模组/开发板型号',
-    '芯片型号', 'CPU架构', '是否支持应用安装', '是否带屏', '基本信息描述', '外观图路径',
-    '是否允许公示', '最早公示日期', '软件版本号', '安全补丁标签', '版本Id', '版本Hash', 'PCID.sc路径',
+    '芯片型号', 'CPU架构', '是否支持应用安装', '是否带屏', '基本信息描述',
+    '是否允许公示', '最早公示日期', '软件版本号', '安全补丁标签', '版本Id', '版本Hash',
   ],
   [SHEETS.commercial]: [
     '测评编号', '操作系统类型', '操作系统版本号', '设备名称(传播名)', '设备类型', '设备型号',
     '硬件设备版本号', '品牌', '品牌英文名', '模组型号', '芯片型号', 'CPU架构', '认证方式',
-    '是否支持应用安装', '是否带屏', '基本信息描述', '外观图路径', '是否允许公示', '最早公示日期',
-    '软件版本号', '安全补丁标签', '版本Id', '版本Hash', 'PCID.sc路径',
+    '是否支持应用安装', '是否带屏', '基本信息描述', '是否允许公示', '最早公示日期',
+    '软件版本号', '安全补丁标签', '版本Id', '版本Hash',
   ],
   [SHEETS.release]: [
-    '测评编号', '操作系统类型', '操作系统版本号', '发行版名称(传播名)', '基本信息描述', '外观图路径',
+    '测评编号', '操作系统类型', '操作系统版本号', '发行版名称(传播名)', '基本信息描述',
     '是否允许公示', '最早公示日期', '软件版本号', '安全补丁标签',
     '设备1模组型号', '设备1芯片型号', '设备1CPU架构', '设备1是否支持应用安装', '设备1是否带屏',
-    '设备1版本Id', '设备1版本Hash', '设备1PCID.sc路径',
+    '设备1版本Id', '设备1版本Hash',
     '设备2模组型号', '设备2芯片型号', '设备2CPU架构', '设备2是否支持应用安装', '设备2是否带屏',
-    '设备2版本Id', '设备2版本Hash', '设备2PCID.sc路径',
+    '设备2版本Id', '设备2版本Hash',
   ],
 });
 
@@ -272,21 +265,57 @@ export async function discoverPhase2Workbooks(inputPath) {
   return { mode: 'batch', rootPath: sourcePath, items, skipped };
 }
 
-export function derivePhase2AttachmentPaths(workbookPath) {
+const SELF_CHECK_PATTERN = /^OpenHarmony设备兼容性规范(.+?)自检表_标准系统\.xlsx$/i;
+
+function selfCheckRank(name) {
+  const match = SELF_CHECK_PATTERN.exec(name);
+  if (!match) return -1;
+  return Number.parseFloat(match[1]) || 0;
+}
+
+async function pickSelfCheckPath(directory, joinPath) {
+  const files = await readDirectoryFiles(directory);
+  const candidates = files.filter((name) => !name.startsWith('~$') && SELF_CHECK_PATTERN.test(name));
+  const stats = [];
+  for (const name of candidates) {
+    const info = await fs.stat(joinPath(directory, name)).catch(() => null);
+    stats.push({ name, rank: selfCheckRank(name), mtime: info?.mtimeMs ?? 0 });
+  }
+  stats.sort((left, right) => right.rank - left.rank || right.mtime - left.mtime);
+  return stats.length ? joinPath(directory, stats[0].name) : '';
+}
+
+async function pickReportZipPath(directory, joinPath) {
+  const reportDir = joinPath(directory, 'report');
+  const inReport = (await readDirectoryFiles(reportDir)).filter((name) => /\.zip$/i.test(name));
+  if (inReport.includes(PHASE2_REPORT_NAME)) return joinPath(reportDir, PHASE2_REPORT_NAME);
+  if (inReport.length) return joinPath(reportDir, inReport.sort()[0]);
+  const inRoot = (await readDirectoryFiles(directory)).filter((name) => /^report.*\.zip$/i.test(name));
+  return inRoot.length ? joinPath(directory, inRoot.sort()[0]) : '';
+}
+
+/**
+ * 自检表与 XTS 报告也按「工作簿所在目录」自动定位：优先精确文件名，
+ * 找不到时退化为目录扫描（自检表按 6.x > 5.x、mtime 新者优先；报告优先 report/ 下的 zip）。
+ */
+export async function derivePhase2AttachmentPaths(workbookPath) {
   const input = normalizeText(workbookPath);
   const windows = /^([a-zA-Z]:[\\/])/.test(input);
-  if (windows) {
-    const directory = path.win32.dirname(input.replaceAll('/', '\\'));
-    return {
-      selfCheckPath: path.win32.join(directory, PHASE2_SELF_CHECK_NAME),
-      reportPath: path.win32.join(directory, 'report', PHASE2_REPORT_NAME),
-      mirrorPath: '',
-    };
-  }
-  const directory = path.dirname(toHostPath(input));
+  const joinPath = windows ? path.win32.join : path.join;
+  const directory = windows
+    ? path.win32.dirname(input.replaceAll('/', '\\'))
+    : path.dirname(toHostPath(input));
+  const exactSelfCheck = joinPath(directory, PHASE2_SELF_CHECK_NAME);
+  const exactReport = joinPath(directory, 'report', PHASE2_REPORT_NAME);
+  const selfCheckPath = await fileExistsAt(exactSelfCheck)
+    ? toHostPath(exactSelfCheck)
+    : await pickSelfCheckPath(directory, joinPath);
+  const reportPath = await fileExistsAt(exactReport)
+    ? toHostPath(exactReport)
+    : await pickReportZipPath(directory, joinPath);
   return {
-    selfCheckPath: path.join(directory, PHASE2_SELF_CHECK_NAME),
-    reportPath: path.join(directory, 'report', PHASE2_REPORT_NAME),
+    selfCheckPath: selfCheckPath || toHostPath(exactSelfCheck),
+    reportPath: reportPath || toHostPath(exactReport),
     mirrorPath: '',
   };
 }
@@ -349,10 +378,18 @@ export function loadExcelJs() {
 }
 
 function cellText(cell) {
-  if (cell.value instanceof Date) {
-    return cell.value.toISOString().slice(0, 10);
+  if (!cell) return '';
+  const value = cell.value;
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
   }
-  return normalizeText(cell.text || cell.value);
+  // 合并单元格的从属格在 exceljs 里是 MergeValue，master 为空时取 text 会抛错。
+  if (value && typeof value === 'object' && 'merge' in value) return '';
+  try {
+    return normalizeText(cell.text || value);
+  } catch {
+    return normalizeText(value);
+  }
 }
 
 function typeForSheet(sheetName) {
@@ -475,10 +512,28 @@ function recordState(record) {
   };
 }
 
+function sheetLabelIndex(sheet) {
+  const index = new Map();
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    row.eachCell({ includeEmpty: false }, (cell, columnNumber) => {
+      if (columnNumber > 8) return;
+      const text = normalizeText(cellText(cell));
+      if (text && !index.has(text)) index.set(text, { row: rowNumber, column: columnNumber });
+    });
+  });
+  return index;
+}
+
 function valuesFromFormSheet(sheet, sheetName) {
+  const labels = sheetLabelIndex(sheet);
   const values = {};
-  for (const [key, , cell] of FIELD_LAYOUTS[sheetName]) {
-    values[key] = cellText(sheet.getCell(cell));
+  for (const [key, label, cell] of FIELD_LAYOUTS[sheetName]) {
+    const hit = labels.get(normalizeText(label));
+    if (!hit) continue;
+    // 值列取模板里的列字母（板级/商用为 C，发行版两套硬件为 B/F），行号按标签实际所在行——
+    // 这样旧表格（含「外观图路径」「PCID.sc路径」两行）和新表格都能读。
+    const column = /^([A-Z]+)/.exec(cell)?.[1] ?? 'C';
+    values[key] = cellText(sheet.getCell(`${column}${hit.row}`));
   }
   const state = Object.fromEntries(Object.entries(STATUS_CELLS).map(([key, cell]) => [key, cellText(sheet.getCell(cell))]));
   return recordFromValues(sheetName, values, state);
@@ -549,6 +604,72 @@ function businessValueCount(record) {
     .filter((value) => normalizeText(value)).length;
 }
 
+const APPEARANCE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+function attachmentKey(value) {
+  return String(value ?? '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '');
+}
+
+async function readDirectoryFiles(dir) {
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    return entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+async function fileExistsAt(filePath) {
+  try {
+    return (await fs.stat(filePath)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 外观图与 PCID.sc 一律按「工作簿所在目录」解析：
+ * 表格里那一列只作为兜底（旧文件），写死的绝对路径不再优先。
+ */
+export async function resolveAttachmentPaths(record, directory) {
+  const files = await readDirectoryFiles(directory);
+  const images = files
+    .filter((name) => !name.startsWith('~$') && APPEARANCE_EXTENSIONS.has(path.extname(name).toLowerCase()))
+    .sort();
+  const hints = [record.name, record.moduleModel, path.basename(directory)]
+    .map(attachmentKey)
+    .filter((item) => item.length >= 3);
+  const preferredImage = images.find((name) => {
+    const key = attachmentKey(path.basename(name, path.extname(name)));
+    return key && hints.some((hint) => key.includes(hint) || hint.includes(key));
+  });
+  const fallbackImage = preferredImage ?? (images.length === 1 ? images[0] : '');
+  const pcidName = files.find((name) => name.toLowerCase() === 'pcid.sc');
+  const devices = record.type === 'release' ? record.devices : [record];
+  for (const device of devices) {
+    const keepImages = [];
+    for (const item of device.appearancePaths ?? []) {
+      const candidate = toHostPath(item);
+      if (isAbsoluteLocalPath(candidate) && await fileExistsAt(candidate)) keepImages.push(candidate);
+    }
+    if (!keepImages.length && fallbackImage) keepImages.push(toHostPath(path.join(directory, fallbackImage)));
+    device.appearancePaths = keepImages;
+
+    const configured = toHostPath(device.pcidScPath);
+    if (pcidName) {
+      device.pcidScPath = toHostPath(path.join(directory, pcidName));
+    } else if (configured && isAbsoluteLocalPath(configured) && await fileExistsAt(configured)) {
+      device.pcidScPath = configured;
+    } else if (configured) {
+      const relative = toHostPath(path.join(directory, configured));
+      device.pcidScPath = await fileExistsAt(relative) ? relative : '';
+    } else {
+      device.pcidScPath = '';
+    }
+  }
+  return record;
+}
+
 async function readWorkbook(sourcePath) {
   const ExcelJS = loadExcelJs();
   const workbook = new ExcelJS.Workbook();
@@ -581,7 +702,9 @@ async function readWorkbook(sourcePath) {
   if (candidates.length > 1) {
     throw new WorkbookValidationError(['一个工作簿只能填写一个设备类型，检测到多个已填写工作表。']);
   }
-  return { sourcePath, record: candidates[0] };
+  const record = candidates[0];
+  await resolveAttachmentPaths(record, path.dirname(sourcePath));
+  return { sourcePath, record };
 }
 
 function requireText(errors, label, value) {
@@ -614,7 +737,7 @@ async function checkFile(errors, label, filePath, extensions, fileExists) {
 
 async function validateDeviceFiles(errors, record, device, label, fileExists) {
   if (['标准系统', '小型系统'].includes(record.systemType)) {
-    await checkFile(errors, `${label}PCID.sc路径`, device.pcidScPath, ['.sc'], fileExists);
+    await checkFile(errors, `${label}PCID.sc`, device.pcidScPath, ['.sc'], fileExists);
   }
 }
 
@@ -631,10 +754,10 @@ export async function validateRecord(record, { fileExists = async (filePath) => 
   ]) requireText(errors, label, value);
   if (!PUBLICITY_VALUES.includes(record.publicity)) errors.push('“是否允许公示”无效');
   if (record.publicity === '选择最早公示时间' && !record.publicizeDate) errors.push('缺少最早公示日期');
-  if (!record.appearancePaths.length) errors.push('缺少外观图路径');
+  if (!record.appearancePaths.length) errors.push('外观图：设备目录下没有图片文件（.png / .jpg / .webp）');
   if (record.appearancePaths.length > 10) errors.push('外观图最多10张');
   for (const filePath of record.appearancePaths) {
-    await checkFile(errors, '外观图路径', filePath, ['.png', '.jpg', '.jpeg', '.webp'], fileExists);
+    await checkFile(errors, '外观图', filePath, ['.png', '.jpg', '.jpeg', '.webp'], fileExists);
   }
   if (record.type === 'release') {
     for (const [index, device] of record.devices.entries()) {
@@ -773,37 +896,38 @@ function setupSheet(sheet, sheetName, values = {}, state = {}) {
     applyCellStyle(sheet.getCell(valueCell), { border: BORDER });
   }
   sheet.getRow(5).height = 34;
+  const rowOf = ([, , cell]) => Number(cell.match(/\d+/)[0]);
+  const productFields = (fields, limit) => fields.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) <= limit);
+  const softwareFields = (fields, limit) => fields.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) > limit);
   if (sheetName === SHEETS.board) {
     section(sheet, 7, '产品定义');
-    const fields = BOARD_FIELDS.filter(([key]) => !['softwareVersion', 'securityPatch', 'versionId', 'versionHash', 'pcidScPath'].includes(key));
-    for (const [key, label, cell] of fields) mergeValueRow(sheet, Number(cell.slice(1)), label, cell, values[key]);
-    section(sheet, 21, '软件定义');
-    for (const [key, label, cell] of BOARD_FIELDS.filter(([key]) => ['softwareVersion', 'securityPatch', 'versionId', 'versionHash', 'pcidScPath'].includes(key))) mergeValueRow(sheet, Number(cell.slice(1)), label, cell, values[key]);
+    for (const [key, label, cell] of productFields(BOARD_FIELDS, 18)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
+    section(sheet, 19, '软件定义');
+    for (const [key, label, cell] of softwareFields(BOARD_FIELDS, 18)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
   } else if (sheetName === SHEETS.commercial) {
     section(sheet, 7, '产品定义');
-    const fields = COMMERCIAL_FIELDS.filter(([key]) => !['softwareVersion', 'securityPatch', 'versionId', 'versionHash', 'pcidScPath'].includes(key));
-    for (const [key, label, cell] of fields) mergeValueRow(sheet, Number(cell.slice(1)), label, cell, values[key]);
-    section(sheet, 27, '软件定义');
-    for (const [key, label, cell] of COMMERCIAL_FIELDS.filter(([key]) => ['softwareVersion', 'securityPatch', 'versionId', 'versionHash', 'pcidScPath'].includes(key))) mergeValueRow(sheet, Number(cell.slice(1)), label, cell, values[key]);
+    for (const [key, label, cell] of productFields(COMMERCIAL_FIELDS, 24)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
+    section(sheet, 25, '软件定义');
+    for (const [key, label, cell] of softwareFields(COMMERCIAL_FIELDS, 24)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
   } else {
     section(sheet, 7, '产品定义');
-    for (const [key, label, cell] of RELEASE_FIELDS.filter(([, , fieldCell]) => Number(fieldCell.match(/\d+/)[0]) < 17)) mergeValueRow(sheet, Number(cell.slice(1)), label, cell, values[key]);
-    section(sheet, 16, '关联硬件配置（固定两套）');
-    for (const row of [17, 18, 19, 20, 21]) {
+    for (const [key, label, cell] of productFields(RELEASE_FIELDS, 13)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
+    section(sheet, 15, '关联硬件配置（固定两套）');
+    for (const row of [16, 17, 18, 19, 20]) {
       const fields = RELEASE_FIELDS.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) === row);
       mergePairRow(sheet, row, fields[0][1], fields[0][2], values[fields[0][0]], fields[1][1], fields[1][2], values[fields[1][0]]);
     }
-    section(sheet, 23, '软件定义');
-    for (const [key, label, cell] of RELEASE_FIELDS.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) === 24 || Number(cell.match(/\d+/)[0]) === 25)) mergeValueRow(sheet, Number(cell.slice(1)), label, cell, values[key]);
-    section(sheet, 26, '关联硬件软件信息');
-    for (const row of [27, 28, 29]) {
+    section(sheet, 22, '软件定义');
+    for (const [key, label, cell] of RELEASE_FIELDS.filter(([, , cell]) => [23, 24].includes(Number(cell.match(/\d+/)[0])))) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
+    section(sheet, 25, '关联硬件软件信息');
+    for (const row of [26, 27]) {
       const fields = RELEASE_FIELDS.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) === row);
       mergePairRow(sheet, row, fields[0][1], fields[0][2], values[fields[0][0]], fields[1][1], fields[1][2], values[fields[1][0]]);
     }
   }
   for (const [key, , cell] of FIELD_LAYOUTS[sheetName]) {
     const cellRef = sheet.getCell(cell);
-    if (key.includes('appearancePaths') || key.includes('versionId') || key.includes('PcidScPath')) cellRef.alignment = { vertical: 'center', wrapText: true };
+    if (key.includes('versionId') || key.includes('description')) cellRef.alignment = { vertical: 'center', wrapText: true };
   }
   addStableValidations(sheet, sheetName);
 }
@@ -825,6 +949,18 @@ async function writeSingleDeviceWorkbook(destination, record) {
   }
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await workbook.xlsx.writeFile(destination);
+}
+
+export async function readWorkbookMeta(workbookPath) {
+  const { record } = await readWorkbook(toHostPath(workbookPath));
+  return { sheetName: record.sheetName, name: record.name || '' };
+}
+
+export async function rewriteWorkbookLayout(workbookPath, record = null) {
+  const destination = toHostPath(workbookPath);
+  const source = record ?? (await readWorkbook(destination)).record;
+  await writeSingleDeviceWorkbook(destination, source);
+  return destination;
 }
 
 export async function createPhase2Workbook(outputPath = DEFAULT_WORKBOOK_PATH) {
