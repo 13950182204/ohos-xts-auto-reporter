@@ -14,6 +14,7 @@ export type SettingsFormValues = {
     username: string;
     password: string;
     workbookPath: string;
+    mirrorPath: string;
     contactPhone: string;
     contactEmail: string;
     waiverPath: string;
@@ -22,6 +23,7 @@ export type SettingsFormValues = {
 export type SettingsView = {
     username?: string;
     workbookPath?: string;
+    mirrorPath?: string;
     selfCheckPath?: string;
     reportPath?: string;
     contactPhone?: string;
@@ -35,6 +37,7 @@ export type ResponseState = {
     errors?: string[];
     summary?: Record<string, unknown>;
     batch?: Record<string, unknown>;
+    mirror?: Record<string, unknown>;
     state?: Record<string, unknown>;
     settings?: SettingsView;
     hasPassword?: boolean;
@@ -83,5 +86,7 @@ export type SettingsCardProps = {
     onWaiverPreflight: () => void;
     onSaveWaiverDraft: () => void;
     onScan: () => void;
+    onCheckMirror: () => void;
+    onUploadMirror: () => void;
 };
 export declare function SettingsCardView(props: SettingsCardProps): ReactElement;

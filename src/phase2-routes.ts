@@ -1,12 +1,18 @@
 import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { Phase2Settings as Phase2SettingsValue } from './config.ts'
+import { parseMirrorProgressLine, parseMirrorResultLine, type MirrorResult } from './mirror-progress.ts'
 import { Phase2SettingsStore, readLegacySettings } from './settings-store.ts'
+
+// 解析函数留在 `mirror-progress.ts`（纯函数、不拉起 Electron 依赖），这里再导出一份方便测试。
+export { parseMirrorProgressLine, parseMirrorResultLine } from './mirror-progress.ts'
+export type { MirrorProgress, MirrorResult } from './mirror-progress.ts'
 
 /**
  * 设置数据面。**刻意不 import `@deepseek-ai/dsh-settings` 的任何值**：
@@ -79,9 +85,9 @@ export interface WaiverScanResult {
   summary: WaiverScanSummary
 }
 type RunState = {
-  /** 当前任务来源：第二阶段资料 / 豁免草稿（设置卡片据此切换文案）。 */
-  kind?: 'phase2' | 'waiver'
-  phase: 'idle' | 'preflight' | 'saving'
+  /** 当前任务来源：第二阶段资料 / 豁免草稿 / 镜像固件上传（设置卡片据此切换文案）。 */
+  kind?: 'phase2' | 'waiver' | 'mirror'
+  phase: 'idle' | 'preflight' | 'saving' | 'uploading'
   startedAt?: string
   finishedAt?: string
   ok?: boolean
@@ -90,6 +96,8 @@ type RunState = {
   summary?: Record<string, unknown>
   progress?: ProgressState
   batch?: BatchState
+  /** 镜像上传结果（`fileName` / `fileSize` / `platformStatus`），`/status` 原样返回。 */
+  mirror?: Record<string, unknown>
 }
 
 const state: RunState = { phase: 'idle' }
@@ -167,6 +175,9 @@ function updateState(patch: Partial<RunState>): void {
 }
 
 function parseProgressLine(line: string): ProgressState | undefined {
+  // 镜像上传脚本用 MIRROR_PROGRESS= 前缀，字段与 ProgressState 同构，映射后共用同一状态机。
+  const mirror = parseMirrorProgressLine(line)
+  if (mirror) return mirror
   if (!line.startsWith('PHASE2_PROGRESS=')) return undefined
   try {
     const parsed: unknown = JSON.parse(line.slice('PHASE2_PROGRESS='.length))
@@ -311,6 +322,8 @@ function runScript(
   onProgress?: (progress: ProgressState) => void,
   onBatchInit?: (batch: BatchState) => void,
   onBatchItemResult?: (result: Record<string, unknown>) => void,
+  /** 硬超时；默认 15 分钟。大固件上传按调用方传入更长的值（镜像上传 45 分钟）。 */
+  timeoutMs: number = 15 * 60 * 1000,
 ): Promise<{ code: number; output: string }> {
   return new Promise((resolve) => {
     const child = execFile(process.execPath, [join(scriptsDirectory(), script), ...args], {
@@ -335,7 +348,7 @@ function runScript(
         if (itemResult) onBatchItemResult?.(itemResult)
       }
     })
-    const timeout = setTimeout(() => child.kill('SIGTERM'), 15 * 60 * 1000)
+    const timeout = setTimeout(() => child.kill('SIGTERM'), timeoutMs)
     child.once('close', () => clearTimeout(timeout))
   })
 }
@@ -618,6 +631,160 @@ async function handleWaiverScan(req: IncomingMessage, res: ServerResponse, setti
   }
 }
 
+/** 镜像上传脚本的硬超时：647MB 实测约 3.5 分钟，留足慢网与解析阶段余量。 */
+const MIRROR_UPLOAD_TIMEOUT_MS = 45 * 60 * 1000
+
+/** 从脚本输出里取最后一条 `MIRROR_RESULT_JSON=` 结果行；没有则 undefined（不伪造成功）。 */
+function parseMirrorResult(output: string): MirrorResult | undefined {
+  for (const line of output.split(/\r?\n/).reverse()) {
+    const parsed = parseMirrorResultLine(line)
+    if (parsed) return parsed
+  }
+  return undefined
+}
+
+/** 每次上传一个独立证据目录（脚本失败时把截图写到这里，方便用户回看）。 */
+function mirrorArtifactsDirectory(): string {
+  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '')
+  return join(tmpdir(), `oh-mirror-upload-${stamp}`)
+}
+
+/** 结果行 → 中文 message；失败时保留脚本给的 errorCode，不吞掉可操作信息。 */
+function mirrorResultMessage(result: MirrorResult, dryRun: boolean): string {
+  if (result.ok) return result.message || (dryRun ? '镜像固件校验通过（未上传）。' : '镜像固件已上传完成。')
+  const code = result.errorCode ? `${result.errorCode}: ` : ''
+  return `${code}${result.message || (dryRun ? '镜像固件校验失败。' : '镜像固件上传失败。')}`
+}
+
+/**
+ * 上传脚本在响应返回后继续跑：结束时**无论成败**都把 phase 收回 idle，
+ * 否则前端「上传中」按钮会一直禁用。结果行缺失时给出中文诊断 + 脚本输出末尾 500 字
+ * （runScript 已按 secrets 脱敏，不会带出密码）。
+ */
+async function finishMirrorRun(execution: Promise<{ code: number; output: string }>, options: { dryRun: boolean }): Promise<void> {
+  const finishedAt = new Date().toISOString()
+  try {
+    const result = await execution
+    const parsed = parseMirrorResult(result.output)
+    const ok = result.code === 0 && parsed?.ok === true
+    const label = options.dryRun ? '校验' : '上传'
+    let message: string
+    if (ok) {
+      message = mirrorResultMessage(parsed as MirrorResult, options.dryRun)
+    } else if (parsed && parsed.ok === false) {
+      message = mirrorResultMessage(parsed, options.dryRun)
+    } else if (parsed) {
+      // 结果行说成功但进程非 0 退出：以退出码为准，不把失败报成成功。
+      message = `镜像固件${label}异常结束（脚本退出码 ${result.code}）${result.output ? `：${result.output.slice(-500)}` : '。'}`
+    } else {
+      message = `镜像固件${label}没有返回结果（脚本退出码 ${result.code}）${result.output ? `：${result.output.slice(-500)}` : '。'}`
+    }
+    updateState({
+      kind: 'mirror',
+      phase: 'idle',
+      finishedAt,
+      ok,
+      message,
+      errors: ok ? undefined : [message],
+      mirror: parsed?.ok ? {
+        fileName: parsed.fileName,
+        fileSize: parsed.fileSize,
+        platformStatus: parsed.platformStatus,
+      } : undefined,
+      progress: { percent: 100, stage: '已结束', detail: message },
+    })
+  } catch (error) {
+    const message = `镜像固件处理失败：${error instanceof Error ? error.message : String(error)}`
+    updateState({
+      kind: 'mirror',
+      phase: 'idle',
+      finishedAt: new Date().toISOString(),
+      ok: false,
+      message,
+      errors: [message],
+      mirror: undefined,
+      progress: { percent: 100, stage: '已结束', detail: message },
+    })
+  }
+}
+
+/**
+ * 镜像固件上传：POST 只做同步校验（方法/忙/空路径/凭据/路径存在）并**立刻**返回，
+ * 脚本转后台跑，前端靠 `/status` 轮询进度条。真实上传 600MB+ 固件要数分钟，
+ * 等脚本结束再响应会撞 5 分钟 HTTP 超时（DSH 宿主/代理侧）。
+ * dryRun 只做本地校验，也走同一状态机，便于前端复用「校验固件」按钮。
+ */
+async function handleMirrorUpload(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsPlane): Promise<void> {
+  if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: '只支持 POST。' })
+  if (state.phase !== 'idle') return sendJson(res, 200, { ok: false, error: '正在处理其他任务，请稍后再试。' })
+  let body: Record<string, unknown>
+  try {
+    body = await readBody(req)
+  } catch (error) {
+    // 请求体本身不合法时不改动任务状态，只回 400。
+    return sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) })
+  }
+  try {
+    const value = currentSettings(settings)
+    const mirrorPath = text(body.mirrorPath) || text(value.mirrorPath)
+    if (!mirrorPath) return sendJson(res, 200, { ok: false, error: '没有填写镜像固件路径，已停止执行。' })
+    if (!existsSync(mirrorPath)) return sendJson(res, 200, { ok: false, error: `镜像固件路径不存在：${mirrorPath}` })
+    const dryRun = body.dryRun === true
+    const username = text(value.username) || text(process.env.OH_USERNAME)
+    const password = text(value.password) || text(process.env.OH_PASSWORD)
+    // dryRun 只做本地校验，不要求账号密码；真实上传必须要有凭据。
+    if (!dryRun && (!username || !password)) return sendJson(res, 200, { ok: false, error: '没有填写对应账号密码，已停止执行。' })
+    const artifactsDir = mirrorArtifactsDirectory()
+    try {
+      mkdirSync(artifactsDir, { recursive: true })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return sendJson(res, 200, { ok: false, error: `无法创建镜像上传证据目录：${message}` })
+    }
+    updateState({
+      kind: 'mirror',
+      phase: 'uploading',
+      startedAt: new Date().toISOString(),
+      finishedAt: undefined,
+      ok: undefined,
+      message: dryRun ? '正在校验镜像固件。' : '正在上传镜像固件。',
+      errors: undefined,
+      summary: undefined,
+      batch: undefined,
+      mirror: undefined,
+      progress: dryRun
+        ? { percent: 0, stage: '校验固件', detail: '正在校验固件文件与文件名规则。' }
+        : { percent: 0, stage: '启动上传', detail: '正在登录兼容性测评平台。' },
+    })
+    const execution = runScript('mirror_upload.mjs', [
+      '--input', mirrorPath,
+      '--artifacts', artifactsDir,
+      dryRun ? '--dry-run' : '--upload',
+    ], { OH_USERNAME: username, OH_PASSWORD: password }, [username, password], (progress) => {
+      updateState({ progress, message: progress.detail || progress.stage })
+    }, undefined, undefined, MIRROR_UPLOAD_TIMEOUT_MS)
+    sendJson(res, 200, {
+      ok: true,
+      message: dryRun ? '已开始校验固件，进度见下方进度条。' : '已开始上传固件，进度见下方进度条。',
+      artifacts: artifactsDir,
+    })
+    void finishMirrorRun(execution, { dryRun })
+  } catch (error) {
+    const message = `镜像固件上传启动失败：${error instanceof Error ? error.message : String(error)}`
+    updateState({
+      kind: 'mirror',
+      phase: 'idle',
+      finishedAt: new Date().toISOString(),
+      ok: false,
+      message,
+      errors: [message],
+      mirror: undefined,
+      progress: { percent: 100, stage: '已结束', detail: message },
+    })
+    sendJson(res, 400, { ok: false, error: message })
+  }
+}
+
 function handleStatus(req: IncomingMessage, res: ServerResponse): void {
   if (req.method !== 'GET') return sendJson(res, 405, { ok: false, message: '只支持 GET。' })
   sendJson(res, 200, { ok: true, state: { ...state } })
@@ -672,6 +839,7 @@ export function registerPhase2Routes(ctx: Context, settings: Phase2SettingsPlane
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/waiver/preflight', handler: (req, res) => handleWaiverRun(req, res, settings, 'preflight') },
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/waiver/save', handler: (req, res) => handleWaiverRun(req, res, settings, 'save') },
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/waiver/scan', handler: (req, res) => handleWaiverScan(req, res, settings) },
+    { kind: 'exact', path: '/api/ohos-xts-auto-reporter/mirror/upload', handler: (req, res) => handleMirrorUpload(req, res, settings) },
   ]
   // `/settings` 同时服务 GET（读）与 POST（写）：WebRoute 的 exact 只按路径分发，
   // 方法判定在各 handler 内部完成。

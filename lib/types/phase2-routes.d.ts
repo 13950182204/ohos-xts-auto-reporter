@@ -1,5 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { Phase2Settings as Phase2SettingsValue } from './config.ts';
+export { parseMirrorProgressLine, parseMirrorResultLine } from './mirror-progress.ts';
+export type { MirrorProgress, MirrorResult } from './mirror-progress.ts';
 /**
  * 设置数据面。**刻意不 import `@deepseek-ai/dsh-settings` 的任何值**：
  * 该包在 0.1.2-rc.1 / 0.2.0-rc.2 上删掉了 `settingsNamespace`（见 settings-store.ts 顶部注释），

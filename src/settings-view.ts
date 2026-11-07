@@ -16,6 +16,7 @@ export type SettingsFormValues = {
   username: string
   password: string
   workbookPath: string
+  mirrorPath: string
   contactPhone: string
   contactEmail: string
   waiverPath: string
@@ -25,6 +26,7 @@ export type SettingsFormValues = {
 export type SettingsView = {
   username?: string
   workbookPath?: string
+  mirrorPath?: string
   selfCheckPath?: string
   reportPath?: string
   contactPhone?: string
@@ -39,6 +41,7 @@ export type ResponseState = {
   errors?: string[]
   summary?: Record<string, unknown>
   batch?: Record<string, unknown>
+  mirror?: Record<string, unknown>
   state?: Record<string, unknown>
   settings?: SettingsView
   hasPassword?: boolean
@@ -91,6 +94,8 @@ export type SettingsCardProps = {
   onWaiverPreflight: () => void
   onSaveWaiverDraft: () => void
   onScan: () => void
+  onCheckMirror: () => void
+  onUploadMirror: () => void
 }
 
 const TOKENS = `
@@ -299,6 +304,69 @@ function scanPanel(scan: WaiverScan): ReactElement {
   )
 }
 
+function formatFileSize(bytes: number | undefined): string {
+  if (bytes === undefined || !Number.isFinite(bytes) || bytes <= 0) return ''
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value >= 100 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
+}
+
+/**
+ * 镜像固件上传面板：进度条 + 文件信息 + 平台回执。
+ * 上传是长任务（几百 MB 需要几分钟），所以「进行中」与「已结束」共用一块面板，
+ * 避免进度闪一下就消失、结果另起一块。
+ */
+function mirrorPanel(
+  kind: string,
+  mirror: Record<string, unknown> | undefined,
+  percent: number | undefined,
+  stage: string,
+  detail: string,
+  phase: string,
+  ok: boolean | undefined,
+  busy: boolean,
+): ReactElement | null {
+  if (kind !== 'mirror') return null
+  const fileName = str(mirror?.fileName)
+  const size = formatFileSize(num(mirror?.fileSize))
+  const platformStatus = str(mirror?.platformStatus)
+  const running = phase !== 'idle'
+  const failed = ok === false
+  const value = clampPercent(percent) ?? (running ? 0 : failed ? 0 : 100)
+  const title = running ? '正在上传固件' : failed ? '固件上传失败' : '固件上传完成'
+  const meta = [fileName, size].filter(Boolean).join(' · ')
+  return createElement('div', { className: 'oh-xts__panel', 'aria-live': 'polite' },
+    createElement('div', { className: 'oh-xts__panel-head' },
+      createElement('span', { className: 'oh-xts__panel-title' }, title),
+      meta ? createElement('span', { className: 'oh-xts__panel-meta' }, meta) : null),
+    createElement('div', { className: 'oh-xts__progress-top' },
+      createElement('span', null, stage || (running ? '上传中' : '已结束')),
+      createElement('span', { className: 'oh-xts__muted' }, `${Math.round(value)}%`)),
+    createElement('div', {
+      className: 'oh-xts__bar',
+      role: 'progressbar',
+      'aria-label': '镜像固件上传进度',
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+      'aria-valuenow': Math.round(value),
+    }, createElement('div', {
+      style: { width: `${value}%`, background: failed ? 'var(--oh-danger)' : 'var(--oh-business)' },
+    })),
+    detail ? createElement('div', { className: 'oh-xts__path' }, detail) : null,
+    platformStatus
+      ? createElement('p', { className: 'oh-xts__path' }, `平台回执：${platformStatus}`)
+      : null,
+    running && busy
+      ? createElement('p', { className: 'oh-xts__muted' }, '上传期间不要关闭设置页；完成后这里会显示平台回执。')
+      : null,
+  )
+}
+
 function progressPanel(
   busy: boolean,
   result: ResponseState | null,
@@ -388,6 +456,9 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
   const mirror = asRecord(attachments?.mirror)
   const showProgress = percent !== undefined && (busy || summaryState?.phase !== 'idle' || Boolean(summaryState?.finishedAt) || Boolean(result))
   const messages = [result?.message, ...(result?.errors ?? [])].filter(Boolean).join('\n')
+  const operationKind = str(summaryState?.kind)
+  const mirrorInfo = asRecord(summaryState?.mirror ?? result?.mirror)
+  const phase = str(summaryState?.phase)
   const metaLines = [
     str(firstResult?.applicationId) ? `申请标识 ${str(firstResult?.applicationId)}` : '',
     str(firstResult?.assessmentNumber) ? `测评编号 ${str(firstResult?.assessmentNumber)}` : '',
@@ -418,10 +489,6 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
           disabled: busy, onChange: (value) => props.onChange('workbookPath', value),
         }),
         field({
-          id: 'oh-xts-mirror', label: '镜像固件路径（预留）', wide: true, value: '',
-          placeholder: '未来固件自动上传，当前留空', disabled: true, readOnly: true, onChange: () => {},
-        }),
-        field({
           id: 'oh-xts-phone', label: '企业联系电话', value: values.contactPhone, type: 'tel',
           disabled: busy, onChange: (value) => props.onChange('contactPhone', value),
         }),
@@ -434,6 +501,29 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
         createElement('button', { type: 'button', className: 'oh-xts__btn', onClick: props.onPreflight, disabled: busy }, '评测资料预检'),
         createElement('button', { type: 'button', className: 'oh-xts__btn oh-xts__btn--primary', onClick: props.onSaveReport, disabled: busy }, '评测资料提交'),
       ),
+    ),
+
+    createElement('hr', { className: 'oh-xts__rule' }),
+
+    createElement('div', { className: 'oh-xts__section' },
+      sectionHead(
+        '镜像固件上传',
+        '上传到平台「企业空间 → 镜像管理」，进度实时同步。',
+      ),
+      createElement('div', { className: 'oh-xts__grid' },
+        field({
+          id: 'oh-xts-mirror-path', label: '固件包路径', wide: true, value: values.mirrorPath,
+          placeholder: '单个 .zip / .7z，或包含固件包的目录',
+          hint: '支持 .zip / .7z（也接受 tar 系列）；文件名只用中文、英文、数字、空格 _ - . ( )。',
+          disabled: busy, onChange: (value) => props.onChange('mirrorPath', value),
+        }),
+      ),
+      createElement('div', { className: 'oh-xts__actions' },
+        createElement('button', { type: 'button', className: 'oh-xts__btn', onClick: props.onCheckMirror, disabled: busy }, '校验固件'),
+        createElement('button', { type: 'button', className: 'oh-xts__btn oh-xts__btn--primary', onClick: props.onUploadMirror, disabled: busy }, busy ? '上传中…' : '上传固件'),
+      ),
+      createElement('p', { className: 'oh-xts__note' }, '上传会在平台镜像列表新增一条记录；只上传文件，不删改任何镜像。'),
+      mirrorPanel(operationKind, mirrorInfo, percent, stage, detail, phase, summaryState?.ok === true ? true : summaryState?.ok === false ? false : undefined, busy),
     ),
 
     createElement('hr', { className: 'oh-xts__rule' }),
@@ -469,10 +559,12 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
         '还没有识别结果：点「识别目录」预览分类与提交路径。'),
     ),
 
-    showProgress ? progressPanel(busy, result, percent, stage, detail) : null,
-    batchPanel(batch, batchItems, batchTitle, batchCompleted, batchTotal),
+    operationKind === 'mirror' ? null : (showProgress ? progressPanel(busy, result, percent, stage, detail) : null),
+    operationKind === 'mirror' ? null : batchPanel(batch, batchItems, batchTitle, batchCompleted, batchTotal),
 
-    result && messages
+    // 镜像上传成功时进度面板已写明结论与平台回执，底部再复述一遍是噪音；
+    // 失败与同步错误仍要在底部给原因。
+    result && messages && !(operationKind === 'mirror' && result.ok)
       ? createElement('div', { className: `oh-xts__status oh-xts__status--${result.ok ? 'ok' : 'error'}`, role: 'status' }, messages)
       : null,
     metaLines.length > 0

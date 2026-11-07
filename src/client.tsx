@@ -18,6 +18,7 @@ const EMPTY_VALUES: SettingsFormValues = {
   username: '',
   password: '',
   workbookPath: '',
+  mirrorPath: '',
   contactPhone: DEFAULT_PHONE,
   contactEmail: DEFAULT_EMAIL,
   waiverPath: '',
@@ -39,8 +40,15 @@ async function request<T extends ApiResult>(path: string, method: 'GET' | 'POST'
   }
   const raw = await response.text().catch(() => '')
   try {
-    const parsed = JSON.parse(raw) as T
-    if (parsed && typeof parsed === 'object') return parsed
+    const parsed = JSON.parse(raw) as T & { error?: unknown }
+    if (parsed && typeof parsed === 'object') {
+      // 宿主对同步错误（路径为空、端口忙等）返回 { ok:false, error }；
+      // 卡片只渲染 message/errors，这里统一成可读文案，避免"点了没反应"。
+      if (parsed.ok === false && !parsed.message && typeof parsed.error === 'string' && parsed.error) {
+        return { ...parsed, message: parsed.error } as T
+      }
+      return parsed
+    }
   } catch {
     // 非 JSON 响应，落到下面的分支给出可执行的提示
   }
@@ -91,6 +99,7 @@ export function ReporterSettingsCard() {
         username: displayValue(value.username),
         password: '',
         workbookPath: displayValue(value.workbookPath),
+        mirrorPath: displayValue(value.mirrorPath),
         contactPhone: displayValue(value.contactPhone) || DEFAULT_PHONE,
         contactEmail: displayValue(value.contactEmail) || DEFAULT_EMAIL,
         waiverPath: displayValue(value.waiverPath),
@@ -121,7 +130,7 @@ export function ReporterSettingsCard() {
     const response = await request<ResponseState>('settings', 'POST', {
       username: values.username.trim(),
       workbookPath: values.workbookPath.trim(),
-      mirrorPath: '',
+      mirrorPath: values.mirrorPath.trim(),
       contactPhone: values.contactPhone.trim() || DEFAULT_PHONE,
       contactEmail: values.contactEmail.trim() || DEFAULT_EMAIL,
       waiverPath: values.waiverPath.trim(),
@@ -148,6 +157,14 @@ export function ReporterSettingsCard() {
     setScanning(false)
   }
 
+  async function runMirror(dryRun: boolean): Promise<void> {
+    setBusy(true)
+    setResult(null)
+    const saved = await saveSettings()
+    if (saved) setResult(await request<ResponseState>('mirror/upload', 'POST', { mirrorPath: values.mirrorPath.trim(), dryRun }))
+    setBusy(false)
+  }
+
   async function run(action: 'preflight' | 'save' | 'waiver/preflight' | 'waiver/save', body: Record<string, unknown>): Promise<void> {
     setBusy(true)
     setResult(null)
@@ -156,10 +173,16 @@ export function ReporterSettingsCard() {
     setBusy(false)
   }
 
+  // 固件上传是长任务：Host 立即返回「已开始」，真正的忙闲状态由 /status 的 phase 决定，
+  // 否则本地 busy 会在几百毫秒后复位，按钮提前解禁。
+  const hostPhase = typeof hostState?.state?.phase === 'string' ? hostState.state.phase : 'idle'
+  const hostRunning = hostPhase !== 'idle'
+  const effectiveBusy = busy || hostRunning
+
   return createElement(SettingsCardView, {
     values,
     hasPassword,
-    busy,
+    busy: effectiveBusy,
     scanning,
     settingsLoaded,
     result,
@@ -181,6 +204,8 @@ export function ReporterSettingsCard() {
       })
     },
     onScan: () => { void runScan() },
+    onCheckMirror: () => { void runMirror(true) },
+    onUploadMirror: () => { void runMirror(false) },
   })
 }
 

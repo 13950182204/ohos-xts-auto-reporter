@@ -100,7 +100,11 @@ describe('phase2 safety boundary', () => {
     expect(client).toContain('测评编号')
     expect(client).not.toContain('PCS 自检表（自动获取）')
     expect(client).not.toContain('XTS 报告 ZIP（自动获取）')
-    expect(client).toContain('镜像固件路径（预留）')
+    // 镜像上传从「预留占位」变成真功能：字段与按钮必须存在，旧占位文案必须消失。
+    expect(client).not.toContain('镜像固件路径（预留）')
+    expect(client).toContain('镜像固件上传')
+    expect(client).toContain('上传固件')
+    expect(client).toContain('mirror/upload')
     expect(client).toContain('评测资料提交')
     expect(client).toContain('批量评测进度')
     // 分类改为按豁免资料目录自动识别：设置卡片不得再出现人工「测试套分类」输入。
