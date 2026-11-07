@@ -57,14 +57,14 @@ export OH_PASSWORD='...'          # 新轮换密码
 | 设置项 | 说明 |
 |---|---|
 | 账号 / 密码 | 兼容性测评平台登录凭据；密码留空表示沿用已保存值，命令行可用 `OH_USERNAME` / `OH_PASSWORD` 回退 |
-| Excel 文件或批量目录 | 单个 `OpenHarmony兼容性申请资料.xlsx`，或包含多个评测目录的父目录 |
+| 设备目录（或批量父目录） | **只填目录**：目录内直接有 `OpenHarmony兼容性申请资料.xlsx` 时按单条处理；没有则按批量父目录扫描一级子目录。设置页会据此自动带出豁免资料路径与固件包路径 |
 | 企业联系电话 / 企业邮箱 | 保存申请时写入平台 |
 | 镜像固件路径 | 固件文件或目录：文件支持 `.zip` / `.7z` / `.rar` / `.tar.gz` 等；目录时自动取其中优先 `.zip` / `.7z` 的固件。设置页标签为「固件包路径」 |
 | 测评编号（豁免） / 豁免资料路径 | 豁免草稿流程使用；「识别」按钮按目录结构推断测试套分类 |
 
 第二阶段卡片使用：
 
-1. 单条处理时填写 `OpenHarmony兼容性申请资料.xlsx` 的绝对路径（支持 Windows 路径和 WSL 路径）。
+1. 单条处理时填写**设备目录**的绝对路径（支持 Windows 路径和 WSL 路径），例如 `D:\\ohos\\XTS6.1\\DHong\\DH-76AM-HS26A`：目录里直接放着 `OpenHarmony兼容性申请资料.xlsx` 就按这一条任务处理。
 2. 批量处理时填写父目录，例如 `D:\\ohos\\XTS6.1\\DHong`。插件只扫描该目录的**一级子目录**；每个子目录代表一个评测任务，且仅当其中存在精确文件名 `OpenHarmony兼容性申请资料.xlsx` 时才进入处理队列。
 3. 对每个进入队列的目录，插件自动获取同级 `OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx` 和 `report/report.zip`。缺少申请表的目录标记为“已跳过”，不会登录或调用平台处理该目录。
 4. 需要上传镜像固件时，在「固件包路径」填固件文件或目录，先点「校验固件」（纯本地，不上传）确认文件名与格式，再点「上传固件」真实上传；两者都不参与「预检」和「评测资料提交」。
@@ -153,13 +153,13 @@ python3 skills/openharmony-waiver-draft/scripts/process_directory.py \
 
 空路径、路径不存在、账号密码缺失、已有任务在执行等同步失败仍返回 HTTP 200，结构为 `{ "ok": false, "error": "<中文原因>" }`；非 POST 返回 405。上传进度通过 `GET /api/ohos-xts-auto-reporter/status` 轮询：`state.kind` 为 `mirror`、`state.phase` 为 `uploading`，`state.progress` 形如 `{ "percent": 12.3, "stage": "解析固件", "detail": "…" }`（来自脚本的 `MIRROR_PROGRESS=` 行）。任务结束（无论成功或失败）时 `state.phase` 回到 `idle`、`state.finishedAt` 有值，结果行 `MIRROR_RESULT_JSON=` 里的 `fileName` / `fileSize` / `platformStatus` 原样放在 `state.mirror`。脚本缺失结果行或非 0 退出时 `state.ok` 为 `false`，`state.message` 带中文原因与脚本输出末尾 500 字（输出已脱敏，不含密码）。
 
-### 路径推导接口（设置页「Excel 文件或批量目录」字段）
+### 路径推导接口（设置页「设备目录（或批量父目录）」字段）
 
-`POST /api/ohos-xts-auto-reporter/paths/derive`，请求体 `{ "workbookPath": "<Excel 文件或批量目录>" }`（也接受同义字段 `path`）。接口纯本地、不联网、不写文件：输入是**目录**时以它为根；输入是**文件**时以文件所在目录为根，再从根目录推出三份默认值。
+`POST /api/ohos-xts-auto-reporter/paths/derive`，请求体 `{ "workbookPath": "<设备目录或批量父目录>" }`（也接受同义字段 `path`）。接口纯本地、不联网、不写文件：输入是**目录**时以它为根；输入是**文件**时以文件所在目录为根，再从根目录推出三份默认值。
 
 | 字段 | 推导规则 |
 | --- | --- |
-| `workbookPath` | 根目录下的 `OpenHarmony兼容性申请资料.xlsx`；没有则取根目录第一个匹配 `兼容性申请资料*.xlsx` 的文件（忽略 Excel 打开时留下的 `~$…` 锁文件）；输入本身就是该 xlsx 时原样返回 |
+| `workbookPath` | 根目录下的 `OpenHarmony兼容性申请资料.xlsx`（仅用于提示「已识别到哪份工作簿」，设置页那一行仍保持目录）；没有则取根目录第一个匹配 `兼容性申请资料*.xlsx` 的文件（忽略 Excel 打开时留下的 `~$…` 锁文件）；输入本身就是该 xlsx 时原样返回 |
 | `waiverPath` | 根目录下的 `exemption/`（必须是目录） |
 | `mirrorPath` | 根目录**一层**内的固件包（`.zip` / `.7z` / `.tar` / `.tar.gz` / `.tar.bz2` / `.tar.xz`）：文件名含 8 位日期者优先 → 日期新的优先 → mtime 新的优先 |
 
@@ -182,7 +182,7 @@ python3 skills/openharmony-waiver-draft/scripts/process_directory.py \
 }
 ```
 
-推不出来的字段留空并写进 `warnings`（如「未找到 .zip / .7z 固件包」「发现 N 个固件包，已选 <文件名>（最新的一个）」），此时仍是 `ok: true`——批量目录父层这类没有 xlsx/固件包的输入也能安全推导。只有空输入（`请先填写 Excel 文件或批量目录。`）和路径不存在（`路径不存在：<输入>`）是 `ok: false`。任何失败都返回 HTTP 200 `{ "ok": false, "error": "<中文原因>" }`（前端据此提示，不会误判成接口不存在），非 POST 返回 405。
+推不出来的字段留空并写进 `warnings`（如「未找到 .zip / .7z 固件包」「发现 N 个固件包，已选 <文件名>（最新的一个）」），此时仍是 `ok: true`——批量目录父层这类没有 xlsx/固件包的输入也能安全推导。只有空输入（`请先填写设备目录（或批量父目录）。`）和路径不存在（`路径不存在：<输入>`）是 `ok: false`。任何失败都返回 HTTP 200 `{ "ok": false, "error": "<中文原因>" }`（前端据此提示，不会误判成接口不存在），非 POST 返回 405。
 
 ## 安装
 

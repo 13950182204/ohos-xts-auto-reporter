@@ -5,7 +5,7 @@ import { posix, win32 } from 'node:path'
 /**
  * 本地路径推导（纯函数，不联网、不起子进程、不读 Excel 内容）。
  *
- * 背景：设置页只让用户填一行「Excel 文件或批量目录」。真正要用的却是同一个设备目录下的
+ * 背景：设置页只让用户填一行**目录**（设备目录或批量父目录）。真正要用的却是同一个设备目录下的
  * 三份东西——第二阶段申请资料 xlsx、豁免资料目录 `exemption/`、镜像固件包（zip/7z）。
  * 本模块把这三个默认值从那一行输入推出来，推导不出来时用 `warnings` 说清缺什么，
  * 而不是报错中断（缺一份不影响其余默认值可用）。
@@ -115,7 +115,7 @@ function compareMirrorCandidates(left: MirrorCandidate, right: MirrorCandidate):
  */
 export function derivePaths(input: string): DerivePathsResult {
   const trimmed = input.trim()
-  if (!trimmed) return { ok: false, error: '请先填写 Excel 文件或批量目录。' }
+  if (!trimmed) return { ok: false, error: '请先填写设备目录（或批量父目录）。' }
 
   let stats: ReturnType<typeof statSync>
   try {

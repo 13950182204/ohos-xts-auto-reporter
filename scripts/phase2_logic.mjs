@@ -243,6 +243,18 @@ export async function discoverPhase2Workbooks(inputPath) {
   if (!sourceStat.isDirectory()) {
     throw new WorkbookValidationError([`输入路径既不是目录也不是 .xlsx 工作簿: ${sourcePath}`]);
   }
+  // 设置页那一行填的是**目录**（设备目录或批量父目录），不是工作簿文件：
+  // 目录里直接有 `OpenHarmony兼容性申请资料.xlsx` 时按单条处理，否则把它当批量父目录扫一级子目录。
+  const rootWorkbook = path.join(sourcePath, PHASE2_WORKBOOK_NAME);
+  const rootWorkbookExists = await fs.stat(rootWorkbook).then((stat) => stat.isFile()).catch(() => false);
+  if (rootWorkbookExists) {
+    return {
+      mode: 'single',
+      rootPath: sourcePath,
+      items: [{ directory: sourcePath, workbookPath: rootWorkbook, name: path.basename(sourcePath) }],
+      skipped: [],
+    };
+  }
   const entries = await fs.readdir(sourcePath, { withFileTypes: true });
   const directories = entries.filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && !isGeneratedPhase2Directory(entry.name)).sort((left, right) => left.name.localeCompare(right.name));
   const items = [];

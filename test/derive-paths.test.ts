@@ -48,8 +48,8 @@ afterEach(async () => {
 
 describe('derivePaths 输入校验', () => {
   it('rejects empty and whitespace-only input', () => {
-    expect(derivePaths('')).toEqual({ ok: false, error: '请先填写 Excel 文件或批量目录。' })
-    expect(derivePaths('   \n\t ')).toEqual({ ok: false, error: '请先填写 Excel 文件或批量目录。' })
+    expect(derivePaths('')).toEqual({ ok: false, error: '请先填写设备目录（或批量父目录）。' })
+    expect(derivePaths('   \n\t ')).toEqual({ ok: false, error: '请先填写设备目录（或批量父目录）。' })
   })
 
   it('rejects a path that does not exist and echoes the original input', () => {
@@ -353,7 +353,7 @@ describe('paths/derive 路由', () => {
   it('answers HTTP 200 with a Chinese error when no path is given', async () => {
     const response = await call(deriveRoute().handler, 'POST', {})
     expect(response.statusCode).toBe(200)
-    expect(JSON.parse(response.body)).toEqual({ ok: false, error: '请先填写 Excel 文件或批量目录。' })
+    expect(JSON.parse(response.body)).toEqual({ ok: false, error: '请先填写设备目录（或批量父目录）。' })
   })
 
   it('answers HTTP 200 with a Chinese error when the path does not exist', async () => {

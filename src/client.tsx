@@ -156,13 +156,13 @@ export function ReporterSettingsCard() {
         setDeriveError('')
         setValues((previous) => {
           const next = { ...previous }
-          // 换了根就按新根整体重置这三条路径：推不出来就清空（配合提示），
+          // 这一行永远是**目录**（用户只填目录），所以只回填另外两条路径：
+          // 换了目录就按新的目录整体重置，推不出来就清空（配合提示），
           // 绝不让上一台设备的固件包路径留在字段里被误上传。
           const adopt = (field: PathField, value: string | undefined): void => {
             const nextValue = value ?? ''
             if (previous[field] !== nextValue) next[field] = nextValue
           }
-          adopt('workbookPath', response.workbookPath)
           adopt('waiverPath', response.waiverPath)
           adopt('mirrorPath', response.mirrorPath)
           return next

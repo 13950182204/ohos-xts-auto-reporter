@@ -136,6 +136,21 @@ describe('phase2 safety boundary', () => {
     })
   })
 
+  it('treats a directory that itself contains the exact workbook as one task', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const root = await mkdtemp(join(tmpdir(), 'ohos-phase2-batch-dir-'))
+    try {
+      await logic.createPhase2Workbook(join(root, 'OpenHarmony兼容性申请资料.xlsx'))
+      const discovery = await logic.discoverPhase2Workbooks(root)
+      expect(discovery.mode).toBe('single')
+      expect(discovery.items).toHaveLength(1)
+      expect(discovery.items[0].workbookPath).toBe(join(root, 'OpenHarmony兼容性申请资料.xlsx'))
+      expect(discovery.skipped).toEqual([])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('discovers only immediate child directories with the exact phase-2 workbook name', async () => {
     const logic = await import('../scripts/phase2_logic.mjs')
     const root = await mkdtemp(join(tmpdir(), 'ohos-phase2-batch-'))
@@ -143,7 +158,6 @@ describe('phase2 safety boundary', () => {
       await logic.createPhase2Workbook(join(root, 'RK3568', 'OpenHarmony兼容性申请资料.xlsx'))
       await mkdir(join(root, 'A537'), { recursive: true })
       await logic.createPhase2Workbook(join(root, 'OpenHarmony兼容性批量结果_旧结果', 'OpenHarmony兼容性申请资料.xlsx'))
-      await writeFile(join(root, 'OpenHarmony兼容性申请资料.xlsx'), 'root workbook should not be treated as a child task')
       const discovery = await logic.discoverPhase2Workbooks(root)
       expect(discovery.mode).toBe('batch')
       expect(discovery.items).toHaveLength(1)
@@ -151,6 +165,8 @@ describe('phase2 safety boundary', () => {
       expect(discovery.skipped).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'A537' })]))
       expect(discovery.items[0].workbookPath).toContain('RK3568')
       expect(discovery.items.map((item: { name: string }) => item.name)).not.toContain('OpenHarmony兼容性批量结果_旧结果')
+      // 结果目录是产物，不是任务子目录
+      expect(discovery.skipped.map((item: { name: string }) => item.name)).not.toContain('OpenHarmony兼容性批量结果_旧结果')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
