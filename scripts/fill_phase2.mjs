@@ -389,11 +389,21 @@ function walkDeviceTypes(nodes, target) {
 }
 
 async function resolveRecordOptions(page, record) {
-  const [systemType, osVersion, frameworks] = await Promise.all([
+  const [systemType, osVersion, frameworks, kernels] = await Promise.all([
     resolveOption(page, 'os_type', record.systemType),
     resolveOption(page, 'os_version', record.osVersion),
     getDictionary(page, 'os_framework'),
+    getDictionary(page, 'system_kernel'),
   ]);
+  const kernelLabel = normalizeText(record.systemKernel);
+  if (!kernelLabel) {
+    throw new ApplicationError('KERNEL_MISSING', '工作簿「内核」为空：平台第2步必填，可选 LiteOS-M / LiteOS-A / Linux。');
+  }
+  const kernel = kernels.find((item) => normalizeComparable(item.itemName) === normalizeComparable(kernelLabel));
+  if (!kernel) {
+    const available = kernels.map((item) => normalizeText(item.itemName)).join(' / ');
+    throw new ApplicationError('LIVE_OPTION_MISMATCH', `网页没有“${kernelLabel}”这一内核选项（可选 ${available}）。`);
+  }
   const resolveFramework = (label) => {
     const found = frameworks.find((item) => normalizeComparable(item.itemName) === normalizeComparable(label));
     if (!found) {
@@ -413,7 +423,14 @@ async function resolveRecordOptions(page, record) {
       throw new ApplicationError('LIVE_OPTION_MISMATCH', `网页没有“${record.category}”这一设备类型。`);
     }
   }
-  return { ...record, systemTypeOption: systemType, osVersionOption: osVersion, devices: resolvedDevices, categoryOption: category };
+  return {
+    ...record,
+    systemTypeOption: systemType,
+    osVersionOption: osVersion,
+    kernelOption: { id: String(kernel.id), label: normalizeText(kernel.itemName) },
+    devices: resolvedDevices,
+    categoryOption: category,
+  };
 }
 
 function publicizeValue(label) {
@@ -439,14 +456,17 @@ async function uploadAppearanceFile(page, filePath) {
   return String(response.id);
 }
 
-async function saveProductDefinition(page, applicationId, record) {
-  reportProgress(35, '保存产品定义', '正在保存产品信息和外观图。');
+async function saveProductDefinition(page, applicationId, record, { advance = false } = {}) {
+  reportProgress(35, advance ? '保存并推进产品定义' : '保存产品定义', '正在保存产品信息和外观图。');
   const appearanceIds = [];
   for (const filePath of record.appearancePaths) {
     appearanceIds.push(await uploadAppearanceFile(page, filePath));
   }
+  // 平台只在「产品定义 → 软件定义」这一步推进（isSave:false）时生成第4步报告关联行；
+  // 只保存（isSave:true）会让报告阶段永远等不到关系行。
   const base = {
-    isSave: true,
+    isSave: !advance,
+    systemKernel: record.kernelOption.id,
     id: applicationId,
     certificationType: record.type === 'board' ? '0' : record.type === 'commercial' ? '1' : '2',
     systemType: record.systemTypeOption.id,
@@ -480,7 +500,6 @@ async function saveProductDefinition(page, applicationId, record) {
         nameZh: record.name,
         nameEn: '',
         deviceModel: record.deviceModel,
-        moduleModel: record.moduleModel,
         category: record.categoryOption.id,
         brandName: record.brandName,
         brandNameEn: record.brandNameEn,
@@ -488,7 +507,11 @@ async function saveProductDefinition(page, applicationId, record) {
         hardwareVersion: record.hardwareVersion,
         isSupportApplication: record.supportsInstall === '支持应用安装' ? '1' : '0',
         withScreen: record.withScreen === '带屏' ? '1' : '0',
-        authType: record.authType === '产线预置' ? '1' : record.authType === '一型一密' ? '4' : '5',
+        // 平台对缺字段会 500（实测），所以选填项也显式传空串。
+        moduleModel: normalizeText(record.moduleModel),
+        authType: normalizeText(record.authType)
+          ? (record.authType === '产线预置' ? '1' : record.authType === '一型一密' ? '4' : '5')
+          : '',
       },
     });
     return appearanceIds;
@@ -632,11 +655,21 @@ async function savePhase2Attachments(page, applicationId, record) {
     data: [{ id: relation.id, xtsFileId: xts.id, pcsFileId: pcs.id }],
   });
   const mirror = mirrorPath ? await chooseMirrorFile(page, mirrorPath) : null;
-  if (mirror) {
+  reportProgress(95, '推进到样机寄送', '正在提交第4步并进入样机寄送。');
+  try {
+    // isSave:false 表示「下一步」：第4步 → 第5步样机寄送。
     await platformRequest(page, '/certification/saveReport', {
       method: 'POST',
-      data: { isSave: true, id: applicationId, mirrorFileId: mirror.id, testReportFileId: '' },
+      data: { isSave: false, id: applicationId, mirrorFileId: mirror ? mirror.id : '', testReportFileId: '' },
     });
+  } catch (error) {
+    if (!mirror) {
+      throw new ApplicationError(
+        'MIRROR_REQUIRED',
+        `第4步需要先选择镜像文件：请把固件包上传到企业空间（镜像管理），或把固件包放在设备目录下再重跑。平台返回：${error.message}`,
+      );
+    }
+    throw error;
   }
   reportProgress(97, '回读附件结果', '正在核对平台返回的文件名和关联标识。');
   return {
@@ -645,6 +678,66 @@ async function savePhase2Attachments(page, applicationId, record) {
     pcs: { fileName: pcs.fileName, id: pcs.id },
     mirror: mirror ? { fileName: mirror.fileName, id: mirror.id } : undefined,
   };
+}
+
+async function uploadExpressChecklist(page, filePath) {
+  const localPath = toHostPath(filePath);
+  const body = await fs.readFile(localPath);
+  const response = await platformRequest(page, '/fileUpload/upload', {
+    method: 'POST',
+    multipart: {
+      file: { name: path.basename(localPath), mimeType: 'application/octet-stream', buffer: body },
+      isMirror: 'false',
+    },
+  });
+  if (!response?.id) {
+    throw new ApplicationError('EXPRESS_CHECKLIST_UPLOAD_FAILED', `快递物品清单上传未返回文件标识: ${path.basename(localPath)}`);
+  }
+  return { id: String(response.id), fileName: normalizeText(response.fileName) || path.basename(localPath) };
+}
+
+async function saveExpressStep(page, applicationId, record) {
+  const raw = normalizeText(record.expressOrderNo);
+  const orderNo = raw.replace(/[；;｡]/g, ',').replace(/\s*,\s*/g, ',').replace(/,+$/g, '');
+  if (!orderNo) return null;
+  const checklistName = 'OpenHarmony兼容性测试样品清单.xlsx';
+  const checklistPath = await detectAdjacentFile(record.workbookPath || process.env.OH_WORKBOOK_PATH || '', checklistName);
+  const currentBefore = await getApplication(page, applicationId);
+  const normalizedActual = normalizeText(currentBefore.expressOrderNo).replace(/[；;\s]/g, ',').replace(/,+/g, ',');
+  const checklistMatches = !checklistPath
+    ? true
+    : normalizeText(currentBefore.expressChecklistsFileName) === checklistName;
+  if (normalizedActual === orderNo.replace(/,+/g, ',') && checklistMatches) {
+    return { expressOrderNo: orderNo, unchanged: true };
+  }
+  const checklist = checklistPath ? await uploadExpressChecklist(page, checklistPath) : null;
+  reportProgress(98, '保存样机寄送', checklist ? '正在上传快递物品清单并保存快递单号。' : '正在保存快递单号。');
+  await platformRequest(page, '/certification/saveExpress', {
+    method: 'POST',
+    data: {
+      isSave: true,
+      id: applicationId,
+      expressOrderNo: orderNo,
+      expressChecklistsFileId: checklist ? checklist.id : '',
+      remarks: process.env.OH_EXPRESS_REMARKS || '',
+      testEquipment: '',
+    },
+  });
+  const current = await getApplication(page, applicationId);
+  const actual = normalizeText(current.expressOrderNo).replace(/[；;\s]/g, ',');
+  if (actual.replace(/,+/g, ',') !== orderNo.replace(/,+/g, ',')) {
+    throw new ApplicationError(
+      'EXPRESS_READBACK_MISMATCH',
+      `样机寄送单号回读不一致：期望 ${orderNo}，平台为 ${actual || '空'}。`,
+    );
+  }
+  if (checklist && normalizeText(current.expressChecklistsFileName) !== checklist.fileName) {
+    throw new ApplicationError(
+      'EXPRESS_CHECKLIST_READBACK_MISMATCH',
+      `快递物品清单回读不一致：期望 ${checklist.fileName}，平台为 ${normalizeText(current.expressChecklistsFileName) || '空'}。`,
+    );
+  }
+  return { expressOrderNo: orderNo, ...(checklist ? { expressChecklist: checklist.fileName } : {}) };
 }
 
 async function phase2AttachmentDifferences(page, applicationId, record) {
@@ -779,7 +872,10 @@ export function productDifferences(current, record, expectedAppearanceIds = []) 
     diff('模组型号', info.moduleModel, record.moduleModel, differences);
     diff('芯片型号', info.chipModel, record.chipModel, differences);
     diff('CPU架构', current.systemFramework, record.devices[0].framework.id, differences);
-    diff('认证方式', current.authType, record.authType === '产线预置' ? '1' : record.authType === '一型一密' ? '4' : '5', differences);
+    const expectedAuth = normalizeText(record.authType)
+      ? (record.authType === '产线预置' ? '1' : record.authType === '一型一密' ? '4' : '5')
+      : '';
+    diff('认证方式', current.authType, expectedAuth, differences);
   } else {
     diff('发行版名称(传播名)', info.name, record.name, differences);
     const pairs = normalizeText(info.moduleAndChip).split(';').filter(Boolean).map((item) => item.split(','));
@@ -856,6 +952,13 @@ async function applicationIdForRecord(page, artifacts, record, mode, workbookPat
 
 async function processRecord(page, artifacts, record, mode, workbookPath) {
   reportProgress(10, '读取申请工作簿', `正在处理${record.name || '当前设备'}。`);
+  // batch 直接调 processRecord，不走 main()，所以镜像固件路径要在这里补。
+  if (!process.env.OH_MIRROR_PATH) {
+    process.env.OH_MIRROR_PATH = await detectFirmwareNearWorkbook(workbookPath || record.sourcePath || '');
+  }
+  if (!process.env.OH_WORKBOOK_PATH) {
+    process.env.OH_WORKBOOK_PATH = workbookPath || record.sourcePath || '';
+  }
   const applicationId = await applicationIdForRecord(page, artifacts, record, mode, workbookPath);
   const resolved = await resolveRecordOptions(page, record);
   if (!applicationId) {
@@ -880,7 +983,19 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
     if (mode === 'dry-run') {
       return { assessmentNumber: record.assessmentNumber, status: 'ready-to-save', applicationId, action: 'none' };
     }
-    const appearanceIds = await saveProductDefinition(page, applicationId, resolved);
+    let appearanceIds;
+    try {
+      appearanceIds = await saveProductDefinition(page, applicationId, resolved, { advance: true });
+    } catch (error) {
+      if (/已存在相同设备/.test(error.message)) {
+        throw new ApplicationError(
+          'DUPLICATE_DEVICE_APPLICATION',
+          '当前企业下已存在相同设备的测评申请，平台拒绝再建一条。请到平台「兼容性测评」列表里找到那条申请继续（或换一台设备）。',
+          { retryable: false, details: { applicationId } },
+        );
+      }
+      throw error;
+    }
     await screenshot(page, artifacts, `${record.assessmentNumber}-product-saved`);
     current = await getApplication(page, applicationId);
     assertNoPcidJsonRequirement(current, resolved);
@@ -896,14 +1011,29 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
     if (mode === 'dry-run') return { assessmentNumber: record.assessmentNumber, status: 'ready-to-save', applicationId, action: 'none' };
     const attachmentDifferences = await phase2AttachmentDifferences(page, applicationId, resolved);
     if (!attachmentDifferences.length) {
-      return { assessmentNumber: current.certificationNumber || record.assessmentNumber, status: 'skipped', applicationId, action: 'none' };
+      const express = await saveExpressStep(page, applicationId, resolved);
+      return {
+        assessmentNumber: current.certificationNumber || record.assessmentNumber,
+        status: 'skipped',
+        applicationId,
+        action: 'none',
+        ...(express ? { express } : {}),
+      };
     }
     if (Number(current.currentStep) < 4) {
       reportProgress(55, '保存软件定义', '正在保存软件版本、补丁和 PCID.sc。');
       await saveSoftwareStep(page, applicationId, resolved, { advanceToReport: true });
     }
     const attachments = await saveAndVerifyPhase2Attachments(page, applicationId, resolved);
-    return { assessmentNumber: current.certificationNumber || record.assessmentNumber, status: 'saved', applicationId, action: 'phase2-attachments-saved', attachments };
+    const express = await saveExpressStep(page, applicationId, resolved);
+    return {
+      assessmentNumber: current.certificationNumber || record.assessmentNumber,
+      status: 'saved',
+      applicationId,
+      action: 'phase2-attachments-saved',
+      attachments,
+      ...(express ? { express } : {}),
+    };
   }
   if (mode === 'dry-run') {
     return { assessmentNumber: record.assessmentNumber, status: 'ready-to-save', applicationId, action: 'none' };
@@ -919,7 +1049,68 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
     return { assessmentNumber: record.assessmentNumber, status: 'blocked', applicationId, differences };
   }
   await screenshot(page, artifacts, `${record.assessmentNumber}-software-saved`);
-  return { assessmentNumber: current.certificationNumber || record.assessmentNumber, status: 'saved', applicationId, action: 'phase2-save-with-report-and-mirror', attachments };
+  const express = await saveExpressStep(page, applicationId, resolved);
+  return {
+    assessmentNumber: current.certificationNumber || record.assessmentNumber,
+    status: 'saved',
+    applicationId,
+    action: 'phase2-save-with-report-and-mirror',
+    attachments,
+    ...(express ? { express } : {}),
+  };
+}
+
+const FIRMWARE_EXTENSIONS = ['.tar.bz2', '.tar.gz', '.tar.xz', '.tar', '.zip', '.7z'];
+
+function workbookDirectory(workbookPath) {
+  const input = normalizeText(workbookPath);
+  if (!input) return '';
+  const windows = /^[a-zA-Z]:[\\/]/.test(input);
+  const joinPath = windows ? path.win32.join : path.join;
+  return windows ? path.win32.dirname(input.replaceAll('/', '\\')) : path.dirname(toHostPath(input));
+}
+
+export async function detectAdjacentFile(workbookPath, fileName) {
+  const directory = workbookDirectory(workbookPath);
+  if (!directory) return '';
+  const windows = /^[a-zA-Z]:[\\/]/.test(normalizeText(workbookPath));
+  const joinPath = windows ? path.win32.join : path.join;
+  const full = joinPath(directory, fileName);
+  const stat = await fs.stat(full).catch(() => null);
+  return stat?.isFile() ? toHostPath(full) : '';
+}
+
+export async function detectFirmwareNearWorkbook(workbookPath) {
+  const input = normalizeText(workbookPath);
+  const windows = /^[a-zA-Z]:[\\/]/.test(input);
+  const joinPath = windows ? path.win32.join : path.join;
+  const candidateInput = windows ? input.replaceAll('/', '\\') : toHostPath(input);
+  const inputStat = await fs.stat(candidateInput).catch(() => null);
+  const directory = inputStat?.isDirectory()
+    ? candidateInput
+    : windows
+      ? path.win32.dirname(candidateInput)
+      : path.dirname(candidateInput);
+  let names = [];
+  try {
+    names = await fs.readdir(directory);
+  } catch {
+    return '';
+  }
+  const candidates = [];
+  for (const name of names) {
+    if (name.startsWith('~$')) continue;
+    const lower = name.toLowerCase();
+    if (!FIRMWARE_EXTENSIONS.some((extension) => lower.endsWith(extension))) continue;
+    const full = joinPath(directory, name);
+    const stat = await fs.stat(full).catch(() => null);
+    if (!stat?.isFile()) continue;
+    const dated = name.match(/(\d{8})/);
+    candidates.push({ full, dated: dated ? Number(dated[1]) : 0, modifiedAt: stat.mtimeMs });
+  }
+  if (!candidates.length) return '';
+  candidates.sort((left, right) => (right.dated - left.dated) || (right.modifiedAt - left.modifiedAt));
+  return toHostPath(candidates[0].full);
 }
 
 async function main() {
@@ -950,10 +1141,11 @@ async function main() {
     process.exitCode = 2;
     return;
   }
+  process.env.OH_WORKBOOK_PATH = options.workbook;
   const derivedAttachments = await derivePhase2AttachmentPaths(options.workbook);
   process.env.OH_SELF_CHECK_PATH = derivedAttachments.selfCheckPath;
   process.env.OH_REPORT_PATH = derivedAttachments.reportPath;
-  process.env.OH_MIRROR_PATH = '';
+  process.env.OH_MIRROR_PATH = derivedAttachments.mirrorPath || await detectFirmwareNearWorkbook(options.workbook);
   const artifacts = artifactDirectory(options.artifacts, input.sourcePath);
   await fs.mkdir(artifacts, { recursive: true });
   if (options.mode === 'save') {
@@ -982,7 +1174,8 @@ async function main() {
   const results = [];
   try {
     const playwright = await import('playwright');
-    browser = await playwright.chromium.launch({ headless: true });
+    const { launchChromium } = await import('./browser_launch.mjs');
+    browser = await launchChromium(playwright, { headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
     page.setDefaultTimeout(15_000);
@@ -1001,8 +1194,8 @@ async function main() {
           assessmentNumber: result.assessmentNumber,
           status: assessmentNumberReady ? '第二阶段已保存' : '第二阶段已保存，待编号回写',
           notes: assessmentNumberReady
-            ? (result.status === 'saved' ? '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验；镜像上传暂未启用。' : '平台数据与工作簿一致，未重复保存。')
-            : '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验；镜像上传暂未启用。',
+            ? (result.status === 'saved' ? '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验。' : '平台数据与工作簿一致，未重复保存。')
+            : '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验。',
         });
       }
     } catch (error) {

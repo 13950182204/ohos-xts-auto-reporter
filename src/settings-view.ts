@@ -556,7 +556,7 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
         createElement('button', { type: 'button', className: 'oh-xts__btn', onClick: props.onCheckMirror, disabled: busy }, '校验固件'),
         createElement('button', { type: 'button', className: 'oh-xts__btn oh-xts__btn--primary', onClick: props.onUploadMirror, disabled: busy }, busy ? '上传中…' : '上传固件'),
       ),
-      createElement('p', { className: 'oh-xts__note' }, '上传会在平台镜像列表新增一条记录；只上传文件，不删改任何镜像。'),
+      createElement('p', { className: 'oh-xts__note' }, '评测资料预检通过后会自动开始上传固件；只上传文件，不删改任何镜像。'),
       mirrorPanel(operationKind, mirrorInfo, percent, stage, detail, phase, summaryState?.ok === true ? true : summaryState?.ok === false ? false : undefined, busy),
     ),
 

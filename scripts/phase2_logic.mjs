@@ -15,6 +15,8 @@ export const PUBLICITY_VALUES = Object.freeze(['发证即公示', '选择最早�
 export const INSTALL_VALUES = Object.freeze(['支持应用安装', '不支持应用安装']);
 export const SCREEN_VALUES = Object.freeze(['带屏', '不带屏']);
 export const AUTH_VALUES = Object.freeze(['产线预置', '一型一密', '不涉及']);
+// 平台第 2 步「内核」字典 itemType=system_kernel。
+export const KERNEL_VALUES = Object.freeze(['LiteOS-M', 'LiteOS-A', 'Linux']);
 
 const STATUS_CELLS = Object.freeze({
   status: 'B3',
@@ -24,71 +26,79 @@ const STATUS_CELLS = Object.freeze({
   notes: 'B5',
 });
 
+// cell 行号是「新模板」的坐标；读取一律按标签定位（见 valuesFromFormSheet），
+// 所以旧模板（没有「内核」「快递单号」两行）仍能读，迁移脚本负责补成新布局。
 const BOARD_FIELDS = Object.freeze([
   ['systemType', '操作系统类型', 'C8'],
   ['osVersion', '操作系统版本号', 'C9'],
-  ['name', '模组/开发板名称(传播名)', 'C10'],
-  ['moduleModel', '模组/开发板型号', 'C11'],
-  ['chipModel', '芯片型号', 'C12'],
-  ['cpuArchitecture', 'CPU架构', 'C13'],
-  ['supportsInstall', '是否支持应用安装', 'C14'],
-  ['withScreen', '是否带屏', 'C15'],
-  ['description', '基本信息描述', 'C16'],
-  ['publicity', '是否允许公示', 'C17'],
-  ['publicizeDate', '最早公示日期', 'C18'],
-  ['softwareVersion', '软件版本号', 'C20'],
-  ['securityPatch', '安全补丁标签', 'C21'],
-  ['versionId', '版本Id', 'C22'],
-  ['versionHash', '版本Hash', 'C23'],
+  ['systemKernel', '内核', 'C10'],
+  ['name', '模组/开发板名称(传播名)', 'C11'],
+  ['moduleModel', '模组/开发板型号', 'C12'],
+  ['chipModel', '芯片型号', 'C13'],
+  ['cpuArchitecture', 'CPU架构', 'C14'],
+  ['supportsInstall', '是否支持应用安装', 'C15'],
+  ['withScreen', '是否带屏', 'C16'],
+  ['description', '基本信息描述', 'C17'],
+  ['publicity', '是否允许公示', 'C18'],
+  ['publicizeDate', '最早公示日期', 'C19'],
+  ['softwareVersion', '软件版本号', 'C21'],
+  ['securityPatch', '安全补丁标签', 'C22'],
+  ['versionId', '版本Id', 'C23'],
+  ['versionHash', '版本Hash', 'C24'],
+  ['expressOrderNo', '快递单号', 'C26'],
 ]);
 
 const COMMERCIAL_FIELDS = Object.freeze([
   ['systemType', '操作系统类型', 'C8'],
   ['osVersion', '操作系统版本号', 'C9'],
-  ['name', '设备名称(传播名)', 'C10'],
-  ['category', '设备类型', 'C11'],
-  ['deviceModel', '设备型号', 'C12'],
-  ['hardwareVersion', '硬件设备版本号', 'C13'],
-  ['brandName', '品牌', 'C14'],
-  ['brandNameEn', '品牌英文名', 'C15'],
-  ['moduleModel', '模组型号', 'C16'],
-  ['chipModel', '芯片型号', 'C17'],
-  ['cpuArchitecture', 'CPU架构', 'C18'],
-  ['authType', '认证方式', 'C19'],
-  ['supportsInstall', '是否支持应用安装', 'C20'],
-  ['withScreen', '是否带屏', 'C21'],
-  ['description', '基本信息描述', 'C22'],
-  ['publicity', '是否允许公示', 'C23'],
-  ['publicizeDate', '最早公示日期', 'C24'],
-  ['softwareVersion', '软件版本号', 'C26'],
-  ['securityPatch', '安全补丁标签', 'C27'],
-  ['versionId', '版本Id', 'C28'],
-  ['versionHash', '版本Hash', 'C29'],
+  ['systemKernel', '内核', 'C10'],
+  ['name', '设备名称(传播名)', 'C11'],
+  ['category', '设备类型', 'C12'],
+  ['deviceModel', '设备型号', 'C13'],
+  ['hardwareVersion', '硬件设备版本号', 'C14'],
+  ['brandName', '品牌', 'C15'],
+  ['brandNameEn', '品牌英文名', 'C16'],
+  ['moduleModel', '模组型号', 'C17'],
+  ['chipModel', '芯片型号', 'C18'],
+  ['cpuArchitecture', 'CPU架构', 'C19'],
+  ['authType', '认证方式', 'C20'],
+  ['supportsInstall', '是否支持应用安装', 'C21'],
+  ['withScreen', '是否带屏', 'C22'],
+  ['description', '基本信息描述', 'C23'],
+  ['publicity', '是否允许公示', 'C24'],
+  ['publicizeDate', '最早公示日期', 'C25'],
+  ['softwareVersion', '软件版本号', 'C27'],
+  ['securityPatch', '安全补丁标签', 'C28'],
+  ['versionId', '版本Id', 'C29'],
+  ['versionHash', '版本Hash', 'C30'],
+  ['expressOrderNo', '快递单号', 'C32'],
 ]);
 
 const RELEASE_FIELDS = Object.freeze([
   ['systemType', '操作系统类型', 'C8'],
   ['osVersion', '操作系统版本号', 'C9'],
-  ['name', '发行版名称(传播名)', 'C10'],
-  ['description', '基本信息描述', 'C11'],
-  ['publicity', '是否允许公示', 'C12'],
-  ['publicizeDate', '最早公示日期', 'C13'],
-  ['device1ModuleModel', '设备1模组型号', 'B16'],
-  ['device2ModuleModel', '设备2模组型号', 'F16'],
-  ['device1ChipModel', '设备1芯片型号', 'B17'],
-  ['device2ChipModel', '设备2芯片型号', 'F17'],
-  ['device1CpuArchitecture', '设备1CPU架构', 'B18'],
-  ['device2CpuArchitecture', '设备2CPU架构', 'F18'],
-  ['device1SupportsInstall', '设备1是否支持应用安装', 'B19'],
-  ['device2SupportsInstall', '设备2是否支持应用安装', 'F19'],
-  ['device1WithScreen', '设备1是否带屏', 'B20'],
-  ['device2WithScreen', '设备2是否带屏', 'F20'],
-  ['softwareVersion', '软件版本号', 'C23'],
-  ['securityPatch', '安全补丁标签', 'C24'],
-  ['device1VersionId', '设备1版本Id', 'B26'],
-  ['device2VersionId', '设备2版本Id', 'F26'],
-  ['device1VersionHash', '设备1版本Hash', 'B27'],
-  ['device2VersionHash', '设备2版本Hash', 'F27'],
+  ['systemKernel', '内核', 'C10'],
+  ['name', '发行版名称(传播名)', 'C11'],
+  ['description', '基本信息描述', 'C12'],
+  ['publicity', '是否允许公示', 'C13'],
+  ['publicizeDate', '最早公示日期', 'C14'],
+  ['device1ModuleModel', '设备1模组型号', 'B17'],
+  ['device2ModuleModel', '设备2模组型号', 'F17'],
+  ['device1ChipModel', '设备1芯片型号', 'B18'],
+  ['device2ChipModel', '设备2芯片型号', 'F18'],
+  ['device1CpuArchitecture', '设备1CPU架构', 'B19'],
+  ['device2CpuArchitecture', '设备2CPU架构', 'F19'],
+  ['device1SupportsInstall', '设备1是否支持应用安装', 'B20'],
+  ['device2SupportsInstall', '设备2是否支持应用安装', 'F20'],
+  ['device1WithScreen', '设备1是否带屏', 'B21'],
+  ['device2WithScreen', '设备2是否带屏', 'F21'],
+  ['softwareVersion', '软件版本号', 'C24'],
+  ['securityPatch', '安全补丁标签', 'C25'],
+  ['device1VersionId', '设备1版本Id', 'B27'],
+  ['device2VersionId', '设备2版本Id', 'F27'],
+  ['device1VersionHash', '设备1版本Hash', 'B28'],
+  ['device2VersionHash', '设备2版本Hash', 'F28'],
+  ['expressOrderNo', '快递单号', 'C30'],
 ]);
 
 const FIELD_LAYOUTS = Object.freeze({
@@ -410,6 +420,9 @@ function recordFromValues(sheetName, values, state = {}) {
     notes: normalizeText(state.notes),
     systemType: normalizeText(values.systemType),
     osVersion: normalizeText(values.osVersion),
+    // 平台第 2 步（内核）与样机寄送第 5 步（快递单号）对所有设备类型都适用。
+    systemKernel: normalizeText(values.systemKernel),
+    expressOrderNo: normalizeText(values.expressOrderNo),
     description: normalizeText(values.description),
     appearancePaths: splitPaths(values.appearancePaths),
     publicity: normalizeText(values.publicity) || '发证即公示',
@@ -459,6 +472,8 @@ export function recordToValues(record) {
   const values = {
     systemType: record.systemType,
     osVersion: record.osVersion,
+    systemKernel: record.systemKernel,
+    expressOrderNo: record.expressOrderNo,
     name: record.name,
     description: record.description,
     appearancePaths: record.appearancePaths?.join('; ') || '',
@@ -749,8 +764,8 @@ export async function validateRecord(record, { fileExists = async (filePath) => 
     errors.push('测评编号格式不正确');
   }
   for (const [label, value] of [
-    ['操作系统类型', record.systemType], ['操作系统版本号', record.osVersion], ['基本信息描述', record.description],
-    ['软件版本号', record.softwareVersion], ['安全补丁标签', record.securityPatch],
+    ['操作系统类型', record.systemType], ['操作系统版本号', record.osVersion], ['内核', record.systemKernel],
+    ['基本信息描述', record.description], ['软件版本号', record.softwareVersion], ['安全补丁标签', record.securityPatch],
   ]) requireText(errors, label, value);
   if (!PUBLICITY_VALUES.includes(record.publicity)) errors.push('“是否允许公示”无效');
   if (record.publicity === '选择最早公示时间' && !record.publicizeDate) errors.push('缺少最早公示日期');
@@ -771,19 +786,23 @@ export async function validateRecord(record, { fileExists = async (filePath) => 
     }
     if (record.devices.length !== 2) errors.push('发行版必须填写两套关联硬件配置');
   } else {
-    for (const [label, value] of [
+    // 商用设备的「模组型号」「认证方式」为选填（信息可能确实没有），
+    // 但认证方式一旦填写就必须是合法字典值。
+    const required = [
       [record.type === 'board' ? '模组/开发板名称(传播名)' : '设备名称(传播名)', record.name],
-      ['模组型号', record.moduleModel], ['芯片型号', record.chipModel], ['CPU架构', record.cpuArchitecture],
+      ['芯片型号', record.chipModel], ['CPU架构', record.cpuArchitecture],
       ['版本Id', record.versionId], ['版本Hash', record.versionHash],
-    ]) requireText(errors, label, value);
+    ];
+    if (record.type === 'board') required.push(['模组型号', record.moduleModel]);
+    for (const [label, value] of required) requireText(errors, label, value);
     validateSelections(errors, record);
     await validateDeviceFiles(errors, record, record, '', fileExists);
     if (record.type === 'commercial') {
       for (const [label, value] of [
         ['设备类型', record.category], ['设备型号', record.deviceModel], ['硬件设备版本号', record.hardwareVersion],
-        ['品牌', record.brandName], ['品牌英文名', record.brandNameEn], ['认证方式', record.authType],
+        ['品牌', record.brandName], ['品牌英文名', record.brandNameEn],
       ]) requireText(errors, label, value);
-      if (!AUTH_VALUES.includes(record.authType)) errors.push('“认证方式”无效');
+      if (record.authType && !AUTH_VALUES.includes(record.authType)) errors.push('“认证方式”无效');
       if (/[\u4e00-\u9fff]/.test(record.brandNameEn)) errors.push('品牌英文名不能包含中文');
     }
   }
@@ -871,6 +890,7 @@ function addStableValidations(sheet, sheetName) {
     if (key.endsWith('WithScreen') || key === 'withScreen') addListValidation(sheet, cell, SCREEN_VALUES);
     if (key === 'publicity') addListValidation(sheet, cell, PUBLICITY_VALUES);
     if (key === 'authType') addListValidation(sheet, cell, AUTH_VALUES);
+    if (key === 'systemKernel') addListValidation(sheet, cell, KERNEL_VALUES);
   }
 }
 
@@ -897,33 +917,44 @@ function setupSheet(sheet, sheetName, values = {}, state = {}) {
   }
   sheet.getRow(5).height = 34;
   const rowOf = ([, , cell]) => Number(cell.match(/\d+/)[0]);
-  const productFields = (fields, limit) => fields.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) <= limit);
-  const softwareFields = (fields, limit) => fields.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) > limit);
+  const rowsBetween = (fields, from, to) => fields.filter(([, , cell]) => {
+    const row = Number(cell.match(/\d+/)[0]);
+    return row >= from && row <= to;
+  });
+  const mergeRows = (fields) => {
+    for (const [key, label, cell] of fields) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
+  };
+  const mergePairRows = (rows) => {
+    for (const row of rows) {
+      const fields = RELEASE_FIELDS.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) === row);
+      mergePairRow(sheet, row, fields[0][1], fields[0][2], values[fields[0][0]], fields[1][1], fields[1][2], values[fields[1][0]]);
+    }
+  };
   if (sheetName === SHEETS.board) {
     section(sheet, 7, '产品定义');
-    for (const [key, label, cell] of productFields(BOARD_FIELDS, 18)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
-    section(sheet, 19, '软件定义');
-    for (const [key, label, cell] of softwareFields(BOARD_FIELDS, 18)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
+    mergeRows(rowsBetween(BOARD_FIELDS, 8, 19));
+    section(sheet, 20, '软件定义');
+    mergeRows(rowsBetween(BOARD_FIELDS, 21, 24));
+    section(sheet, 25, '样机寄送');
+    mergeRows(rowsBetween(BOARD_FIELDS, 26, 26));
   } else if (sheetName === SHEETS.commercial) {
     section(sheet, 7, '产品定义');
-    for (const [key, label, cell] of productFields(COMMERCIAL_FIELDS, 24)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
-    section(sheet, 25, '软件定义');
-    for (const [key, label, cell] of softwareFields(COMMERCIAL_FIELDS, 24)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
+    mergeRows(rowsBetween(COMMERCIAL_FIELDS, 8, 25));
+    section(sheet, 26, '软件定义');
+    mergeRows(rowsBetween(COMMERCIAL_FIELDS, 27, 30));
+    section(sheet, 31, '样机寄送');
+    mergeRows(rowsBetween(COMMERCIAL_FIELDS, 32, 32));
   } else {
     section(sheet, 7, '产品定义');
-    for (const [key, label, cell] of productFields(RELEASE_FIELDS, 13)) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
-    section(sheet, 15, '关联硬件配置（固定两套）');
-    for (const row of [16, 17, 18, 19, 20]) {
-      const fields = RELEASE_FIELDS.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) === row);
-      mergePairRow(sheet, row, fields[0][1], fields[0][2], values[fields[0][0]], fields[1][1], fields[1][2], values[fields[1][0]]);
-    }
-    section(sheet, 22, '软件定义');
-    for (const [key, label, cell] of RELEASE_FIELDS.filter(([, , cell]) => [23, 24].includes(Number(cell.match(/\d+/)[0])))) mergeValueRow(sheet, rowOf([key, label, cell]), label, cell, values[key]);
-    section(sheet, 25, '关联硬件软件信息');
-    for (const row of [26, 27]) {
-      const fields = RELEASE_FIELDS.filter(([, , cell]) => Number(cell.match(/\d+/)[0]) === row);
-      mergePairRow(sheet, row, fields[0][1], fields[0][2], values[fields[0][0]], fields[1][1], fields[1][2], values[fields[1][0]]);
-    }
+    mergeRows(rowsBetween(RELEASE_FIELDS, 8, 14));
+    section(sheet, 16, '关联硬件配置（固定两套）');
+    mergePairRows([17, 18, 19, 20, 21]);
+    section(sheet, 23, '软件定义');
+    mergeRows(rowsBetween(RELEASE_FIELDS, 24, 25));
+    section(sheet, 26, '关联硬件软件信息');
+    mergePairRows([27, 28]);
+    section(sheet, 29, '样机寄送');
+    mergeRows(rowsBetween(RELEASE_FIELDS, 30, 30));
   }
   for (const [key, , cell] of FIELD_LAYOUTS[sheetName]) {
     const cellRef = sheet.getCell(cell);

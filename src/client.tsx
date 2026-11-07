@@ -215,7 +215,29 @@ export function ReporterSettingsCard() {
     setBusy(false)
   }
 
-  async function run(action: 'preflight' | 'save' | 'waiver/preflight' | 'waiver/save', body: Record<string, unknown>): Promise<void> {
+  /**
+   * 评测资料预检：通过后**自动接着上传固件**（用户要求「预检通过就开始提交固件」），
+   * 不再让用户点第二次；固件路径为空时只做预检。上传是长任务，Host 立即返回，进度走 /status。
+   */
+  async function runPreflight(): Promise<void> {
+    setBusy(true)
+    setResult(null)
+    const saved = await saveSettings()
+    if (!saved) {
+      setBusy(false)
+      return
+    }
+    const preflight = await request<ResponseState>('preflight', 'POST', { workbookPath: values.workbookPath.trim() })
+    const mirrorPath = values.mirrorPath.trim()
+    if (preflight.ok && mirrorPath) {
+      setResult(await request<ResponseState>('mirror/upload', 'POST', { mirrorPath, dryRun: false }))
+    } else {
+      setResult(preflight)
+    }
+    setBusy(false)
+  }
+
+  async function run(action: 'save' | 'waiver/preflight' | 'waiver/save', body: Record<string, unknown>): Promise<void> {
     setBusy(true)
     setResult(null)
     const saved = await saveSettings()
@@ -242,7 +264,7 @@ export function ReporterSettingsCard() {
     deriving,
     deriveError,
     onChange,
-    onPreflight: () => { void run('preflight', { workbookPath: values.workbookPath.trim() }) },
+    onPreflight: () => { void runPreflight() },
     onSaveReport: () => { void run('save', { workbookPath: values.workbookPath.trim() }) },
     onWaiverPreflight: () => {
       void run('waiver/preflight', {

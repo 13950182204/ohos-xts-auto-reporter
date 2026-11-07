@@ -11,6 +11,28 @@ import { registerPhase2Settings } from '../src/phase2-routes.ts'
 
 const execFile = promisify(execFileCallback)
 
+type SheetLike = { getCell: (ref: string) => { value: unknown } }
+function fillSheet(sheet: SheetLike, values: Record<string, string>) {
+  for (const [cell, value] of Object.entries(values)) sheet.getCell(cell).value = value
+}
+
+function labelRow(sheet: SheetLike & { eachRow: (callback: (row: SheetLike, rowNumber: number) => void) => void }, label: string): number {
+  let found = 0
+  sheet.eachRow((row, rowNumber) => {
+    const value = (row.getCell('A') as { value?: unknown }).value
+    if (!found && value === label) found = rowNumber
+  })
+  return found
+}
+
+// 新模板「模组开发板」sheet 的有效填值（内核在 C10，快递单号在 C26，均按标签定位）。
+const BOARD_VALUES: Record<string, string> = {
+  C8: '标准系统', C9: 'OpenHarmony 6.1 Release', C10: 'LiteOS-A',
+  C11: 'A333', C12: 'A333', C13: 'A333', C14: 'arm64',
+  C15: '支持应用安装', C16: '带屏', C17: '描述', C18: '发证即公示',
+  C21: '1.0.0', C22: '2026/08/28', C23: 'release', C24: 'hash',
+}
+
 describe('phase2 settings', () => {
   it('marks username and password as DSH secrets and keeps contact defaults', () => {
     const json = Phase2Settings.toJSON() as { refs: Record<string, { meta?: Record<string, unknown> }> }
@@ -216,11 +238,7 @@ describe('phase2 safety boundary', () => {
       const workbook = new ExcelJS.Workbook()
       await workbook.xlsx.readFile(workbookPath)
       const sheet = workbook.getWorksheet('模组开发板')
-      for (const [cell, value] of Object.entries({
-        C8: '标准系统', C9: 'OpenHarmony 6.1 Release', C10: 'A333', C11: 'A333', C12: 'A333',
-        C13: 'arm64', C14: '支持应用安装', C15: '带屏', C16: '描述',
-        C17: '发证即公示', C20: '1.0.0', C21: '2026/08/28', C22: 'release', C23: 'hash',
-      })) sheet.getCell(cell).value = value
+      fillSheet(sheet, BOARD_VALUES)
       await workbook.xlsx.writeFile(workbookPath)
 
       let failure: { code?: number; stdout?: string; stderr?: string } | undefined
@@ -324,8 +342,8 @@ describe('phase2 safety boundary', () => {
       const ExcelJS = logic.loadExcelJs()
       const workbook = new ExcelJS.Workbook()
       await workbook.xlsx.readFile(file)
-      workbook.getWorksheet('模组开发板').getCell('C10').value = 'A333'
-      workbook.getWorksheet('商用设备').getCell('C10').value = '设备'
+      workbook.getWorksheet('模组开发板').getCell('C11').value = 'A333'
+      workbook.getWorksheet('商用设备').getCell('C11').value = '设备'
       await workbook.xlsx.writeFile(file)
       await expect(logic.readPhase2Workbook(file)).rejects.toThrow('一个工作簿只能填写一个设备类型')
     } finally {
@@ -343,11 +361,7 @@ describe('phase2 safety boundary', () => {
       const workbook = new ExcelJS.Workbook()
       await workbook.xlsx.readFile(file)
       const sheet = workbook.getWorksheet('模组开发板')
-      for (const [cell, value] of Object.entries({
-        C8: '标准系统', C9: 'OpenHarmony 6.1 Release', C10: 'A333', C11: '76A', C12: 'A333',
-        C13: 'arm64', C14: '支持应用安装', C15: '带屏', C16: '描述',
-        C17: '发证即公示', C20: '1.0.0', C21: '2026/01/01', C22: 'release', C23: 'hash',
-      })) sheet.getCell(cell).value = value
+      fillSheet(sheet, { ...BOARD_VALUES, C11: '76A' })
       await workbook.xlsx.writeFile(file)
 
       await expect(logic.readPhase2Workbook(file)).rejects.toThrow('外观图')
@@ -358,6 +372,141 @@ describe('phase2 safety boundary', () => {
       const resolved = await logic.readPhase2Workbook(file)
       expect(resolved.record.appearancePaths).toEqual([join(directory, 'A333.png')])
       expect(resolved.record.pcidScPath).toBe(join(directory, 'pcid.sc'))
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a workbook whose kernel is empty', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const directory = await mkdtemp(join(tmpdir(), 'ohos-phase2-kernel-'))
+    const file = join(directory, 'application.xlsx')
+    try {
+      await logic.createPhase2Workbook(file)
+      const workbook = new (logic.loadExcelJs().Workbook)()
+      await workbook.xlsx.readFile(file)
+      fillSheet(workbook.getWorksheet('模组开发板'), { ...BOARD_VALUES, C10: '' })
+      await workbook.xlsx.writeFile(file)
+      await writeFile(join(directory, 'A333.png'), 'png')
+      await writeFile(join(directory, 'pcid.sc'), 'pcid')
+      await expect(logic.readPhase2Workbook(file)).rejects.toThrow('缺少内核')
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('allows commercial devices to omit module model and auth type, but validates a filled auth type', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const directory = await mkdtemp(join(tmpdir(), 'ohos-phase2-commercial-'))
+    const file = join(directory, 'application.xlsx')
+    try {
+      await logic.createPhase2Workbook(file)
+      const workbook = new (logic.loadExcelJs().Workbook)()
+      await workbook.xlsx.readFile(file)
+      // C17「模组型号」与 C20「认证方式」留空，其余必填齐全。
+      fillSheet(workbook.getWorksheet('商用设备'), {
+        C8: '标准系统', C9: 'OpenHarmony 6.1 Release', C10: 'LiteOS-M',
+        C11: '设备', C12: '智能穿戴', C13: 'MODEL-1', C14: 'HW-1',
+        C15: '品牌', C16: 'Brand', C18: '芯片', C19: 'arm64',
+        C21: '支持应用安装', C22: '带屏', C23: '描述', C24: '发证即公示',
+        C27: '1.0.0', C28: '2026/08/28', C29: 'release', C30: 'hash',
+      })
+      await workbook.xlsx.writeFile(file)
+      await writeFile(join(directory, '设备.png'), 'png')
+      await writeFile(join(directory, 'pcid.sc'), 'pcid')
+
+      const { record } = await logic.readPhase2Workbook(file)
+      expect(record.sheetName).toBe('商用设备')
+      expect(record.moduleModel).toBe('')
+      expect(record.authType).toBe('')
+
+      // 选填不等于不校验：填了非法认证方式仍然报错。
+      const changed = new (logic.loadExcelJs().Workbook)()
+      await changed.xlsx.readFile(file)
+      changed.getWorksheet('商用设备').getCell('C20').value = '非法值'
+      await changed.xlsx.writeFile(file)
+      await expect(logic.readPhase2Workbook(file)).rejects.toThrow('“认证方式”无效')
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('round-trips kernel and express order through the generated template and a layout rewrite', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const directory = await mkdtemp(join(tmpdir(), 'ohos-phase2-newcols-'))
+    const file = join(directory, 'application.xlsx')
+    try {
+      await logic.createPhase2Workbook(file)
+      const workbook = new (logic.loadExcelJs().Workbook)()
+      await workbook.xlsx.readFile(file)
+      fillSheet(workbook.getWorksheet('模组开发板'), {
+        ...BOARD_VALUES,
+        C26: 'SF1234567890,SF0987654321',
+      })
+      await workbook.xlsx.writeFile(file)
+      await writeFile(join(directory, 'A333.png'), 'png')
+      await writeFile(join(directory, 'pcid.sc'), 'pcid')
+
+      // 新坐标表：三张表的「内核」都在第 10 行，「快递单号」在各自样机寄送段。
+      const layout = new (logic.loadExcelJs().Workbook)()
+      await layout.xlsx.readFile(file)
+      for (const [sheetName, expressRow] of [['模组开发板', 26], ['商用设备', 32], ['发行版', 30]] as const) {
+        const sheet = layout.getWorksheet(sheetName)
+        expect(labelRow(sheet, '内核')).toBe(10)
+        expect(labelRow(sheet, '快递单号')).toBe(expressRow)
+      }
+
+      const { record } = await logic.readPhase2Workbook(file)
+      expect(record.systemKernel).toBe('LiteOS-A')
+      expect(record.expressOrderNo).toBe('SF1234567890,SF0987654321')
+
+      // 迁移/重写（fill 完成后重写布局）后两列必须保留。
+      await logic.rewriteWorkbookLayout(file)
+      const again = await logic.readPhase2Workbook(file)
+      expect(again.record.systemKernel).toBe('LiteOS-A')
+      expect(again.record.expressOrderNo).toBe('SF1234567890,SF0987654321')
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('still reads a workbook that predates the kernel and express rows', async () => {
+    const logic = await import('../scripts/phase2_logic.mjs')
+    const directory = await mkdtemp(join(tmpdir(), 'ohos-phase2-old-layout-'))
+    const file = join(directory, 'application.xlsx')
+    try {
+      // 旧模板没有「内核」「快递单号」两行：后续行整体上移一行。
+      const ExcelJS = logic.loadExcelJs()
+      const workbook = new ExcelJS.Workbook()
+      for (const sheetName of ['模组开发板', '发行版', '商用设备']) {
+        workbook.addWorksheet(sheetName).getCell('A1').value = `OpenHarmony兼容性申请 - ${sheetName}`
+      }
+      const sheet = workbook.getWorksheet('模组开发板')
+      sheet.getCell('A7').value = '产品定义'
+      const oldRows: Array<[string, string, string]> = [
+        ['操作系统类型', 'C8', '标准系统'],
+        ['操作系统版本号', 'C9', 'OpenHarmony 6.1 Release'],
+        ['模组/开发板名称(传播名)', 'C10', 'A333'],
+        ['模组/开发板型号', 'C11', 'A333'],
+        ['芯片型号', 'C12', 'A333'],
+      ]
+      for (const [label, cell, value] of oldRows) {
+        const row = Number(cell.match(/\d+/)?.[0])
+        sheet.getCell(`A${row}`).value = label
+        sheet.getCell(cell).value = value
+      }
+      await workbook.xlsx.writeFile(file)
+
+      const meta = await logic.readWorkbookMeta(file)
+      expect(meta).toEqual({ sheetName: '模组开发板', name: 'A333' })
+
+      // 迁移脚本走 readWorkbookMeta + rewriteWorkbookLayout：补出新布局且数据不丢。
+      await logic.rewriteWorkbookLayout(file)
+      expect(await logic.readWorkbookMeta(file)).toEqual({ sheetName: '模组开发板', name: 'A333' })
+      const migrated = new (logic.loadExcelJs().Workbook)()
+      await migrated.xlsx.readFile(file)
+      expect(labelRow(migrated.getWorksheet('模组开发板'), '内核')).toBe(10)
+      expect(labelRow(migrated.getWorksheet('模组开发板'), '快递单号')).toBe(26)
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

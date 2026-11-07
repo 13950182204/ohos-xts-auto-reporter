@@ -101,8 +101,8 @@ async function updateSavedWorkbook(sourcePath, result) {
     assessmentNumber: result.assessmentNumber,
     status: assessmentNumberReady ? '第二阶段已保存' : '第二阶段已保存，待编号回写',
     notes: assessmentNumberReady
-      ? (result.status === 'saved' ? '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验；镜像上传暂未启用。' : '平台数据与工作簿一致，未重复保存。')
-      : '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验；镜像上传暂未启用。',
+      ? (result.status === 'saved' ? '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验。' : '平台数据与工作簿一致，未重复保存。')
+      : '产品定义、软件定义、XTS报告和PCS自检表已保存并回读校验。',
   });
 }
 
@@ -222,7 +222,8 @@ async function main() {
   let browser;
   try {
     const playwright = await import('playwright');
-    browser = await playwright.chromium.launch({ headless: true });
+    const { launchChromium } = await import('./browser_launch.mjs');
+    browser = await launchChromium(playwright, { headless: true });
     const context = await browser.newContext();
     const page = await context.newPage();
     page.setDefaultTimeout(15_000);
