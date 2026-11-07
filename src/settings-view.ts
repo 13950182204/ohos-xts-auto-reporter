@@ -103,6 +103,7 @@ export type SettingsCardProps = {
   /** 按 Excel 路径推导出的默认路径（只用于提示与回填，不触发动作）。 */
   derived?: DerivePathsResult | null
   deriving?: boolean
+  deriveError?: string
   onChange: (field: keyof SettingsFormValues, value: string) => void
   onPreflight: () => void
   onSaveReport: () => void
@@ -451,7 +452,7 @@ function batchPanel(
 }
 
 export function SettingsCardView(props: SettingsCardProps): ReactElement {
-  const { values, result, state, scan, busy, scanning, derived, deriving } = props
+  const { values, result, state, scan, busy, scanning, derived, deriving, deriveError } = props
   // 只提示「已经按目录带出哪些路径」，不描述提交动作：回填永远不触发任何请求之外的行为。
   const derivedFields = derived && derived.ok
     ? [
@@ -462,12 +463,14 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
     : []
   const deriveHint = deriving
     ? '正在按该目录推导其它路径…'
-    : derived && derived.ok
-      ? [
-          derivedFields.length ? `已按该目录带出：${derivedFields.join(' · ')}` : '',
-          ...(derived.warnings ?? []),
-        ].filter(Boolean).join('；')
-      : ''
+    : deriveError
+      ? `路径推导没跑通：${deriveError}`
+      : derived && derived.ok
+        ? [
+            derivedFields.length ? `已按该目录带出：${derivedFields.join(' · ')}` : '',
+            ...(derived.warnings ?? []),
+          ].filter(Boolean).join('；')
+        : ''
 
   const summaryState = state && !state.finishedAt && result
     ? { ...state, finishedAt: new Date().toISOString(), ok: result.ok, message: result.message, batch: result.batch ?? state.batch }
@@ -518,7 +521,7 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
         field({
           id: 'oh-xts-workbook', label: 'Excel 文件或批量目录', wide: true, value: values.workbookPath,
           placeholder: '单个 Excel 或目录，例如 D:\\ohos\\XTS6.1\\DHong\\DH-76AM-HS26A',
-          hint: deriveHint || '填目录即可带出第二阶段 xlsx、exemption 与固件包路径；只填路径，不会自动提交。',
+          hint: deriveHint || '填设备目录即可带出：把本行换成目录下的 OpenHarmony兼容性申请资料.xlsx，并填好 exemption 与固件包路径（只填路径，不会自动提交）。',
           disabled: busy, onChange: (value) => props.onChange('workbookPath', value),
         }),
         field({

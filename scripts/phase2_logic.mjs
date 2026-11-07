@@ -3,7 +3,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
-export const DEFAULT_WORKBOOK_PATH = 'D:\\ohos\\XTS6.1\\OpenHarmony兼容性申请_第二阶段.xlsx';
+export const DEFAULT_WORKBOOK_PATH = 'D:\\ohos\\XTS6.1\\OpenHarmony兼容性申请资料.xlsx';
 export const SHEETS = Object.freeze({
   board: '模组开发板',
   release: '发行版',
@@ -212,7 +212,7 @@ export async function ensureWorkbookWritable(workbookPath, { attempts = 15, inte
 
 export const PHASE2_SELF_CHECK_NAME = 'OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx';
 export const PHASE2_REPORT_NAME = 'report.zip';
-export const PHASE2_WORKBOOK_NAME = 'OpenHarmony兼容性申请_第二阶段.xlsx';
+export const PHASE2_WORKBOOK_NAME = 'OpenHarmony兼容性申请资料.xlsx';
 
 function isGeneratedPhase2Directory(name) {
   return name.startsWith('OpenHarmony兼容性申请_第二阶段_结果_') || name.startsWith('OpenHarmony兼容性批量结果_');

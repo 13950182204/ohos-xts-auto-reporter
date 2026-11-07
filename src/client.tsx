@@ -29,8 +29,6 @@ const EMPTY_VALUES: SettingsFormValues = {
 type PathField = 'workbookPath' | 'waiverPath' | 'mirrorPath'
 
 /** 只保存「上一轮由推导写入的值」，用来区分「用户手动改过」与「仍是自动带出的」。 */
-type AutoFilled = Partial<Record<PathField, string>>
-
 type ApiResult = { ok: boolean; message?: string }
 
 async function request<T extends ApiResult>(path: string, method: 'GET' | 'POST', body?: Record<string, unknown>): Promise<T> {
@@ -96,7 +94,7 @@ export function ReporterSettingsCard() {
   // 路径推导：只做「填 Excel → 带出其它路径」，绝不自动触发任何提交动作。
   const [derived, setDerived] = useState<DerivePathsResult | null>(null)
   const [deriving, setDeriving] = useState(false)
-  const autoFilledRef = useRef<AutoFilled>({})
+  const [deriveError, setDeriveError] = useState('')
   const derivedForRef = useRef('')
 
   useEffect(() => {
@@ -134,6 +132,8 @@ export function ReporterSettingsCard() {
   }, [])
 
   // 输入停顿 500ms 后按 Excel 路径推导其它路径；同一输入只请求一次。
+  // 语义：Excel 这一行是「根」，换了根就用推导结果覆盖另外两条路径；同一个根不重复推导，
+  // 因此用户推导后手改的豁免路径 / 固件包路径不会被悄悄改回去。
   useEffect(() => {
     const input = values.workbookPath.trim()
     if (!settingsLoaded || !input || derivedForRef.current === input) return
@@ -145,22 +145,22 @@ export function ReporterSettingsCard() {
         const response = await request<DerivePathsResult>('paths/derive', 'POST', { workbookPath: input })
         if (!active) return
         setDeriving(false)
+        // 期间用户又改了根：这次响应已过期，丢弃，避免用旧结果覆盖新输入。
+        if (derivedForRef.current !== input) return
         setDerived(response)
-        if (!response.ok) return
-        const previousAuto = autoFilledRef.current
-        autoFilledRef.current = {
-          workbookPath: response.workbookPath,
-          waiverPath: response.waiverPath,
-          mirrorPath: response.mirrorPath,
+        if (!response.ok) {
+          setDeriveError(response.message ?? '路径推导不可用。')
+          derivedForRef.current = ''
+          return
         }
+        setDeriveError('')
         setValues((previous) => {
           const next = { ...previous }
+          // 换了根就按新根整体重置这三条路径：推不出来就清空（配合提示），
+          // 绝不让上一台设备的固件包路径留在字段里被误上传。
           const adopt = (field: PathField, value: string | undefined): void => {
-            if (!value) return
-            const current = previous[field]
-            // 空着就填；仍是上一轮自动带出的值就跟着更新；用户手动改过则绝不覆盖。
-            if (current && current !== previousAuto[field]) return
-            next[field] = value
+            const nextValue = value ?? ''
+            if (previous[field] !== nextValue) next[field] = nextValue
           }
           adopt('workbookPath', response.workbookPath)
           adopt('waiverPath', response.waiverPath)
@@ -240,6 +240,7 @@ export function ReporterSettingsCard() {
     scan,
     derived,
     deriving,
+    deriveError,
     onChange,
     onPreflight: () => { void run('preflight', { workbookPath: values.workbookPath.trim() }) },
     onSaveReport: () => { void run('save', { workbookPath: values.workbookPath.trim() }) },

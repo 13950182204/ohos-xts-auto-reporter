@@ -129,7 +129,7 @@ describe('phase2 safety boundary', () => {
 
   it('derives attachments from the workbook directory and leaves mirror deferred', async () => {
     const logic = await import('../scripts/phase2_logic.mjs')
-    expect(logic.derivePhase2AttachmentPaths('D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony兼容性申请_第二阶段.xlsx')).toEqual({
+    expect(logic.derivePhase2AttachmentPaths('D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony兼容性申请资料.xlsx')).toEqual({
       selfCheckPath: 'D:\\ohos\\XTS6.1\\DHong\\A537\\OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx',
       reportPath: 'D:\\ohos\\XTS6.1\\DHong\\A537\\report\\report.zip',
       mirrorPath: '',
@@ -140,10 +140,10 @@ describe('phase2 safety boundary', () => {
     const logic = await import('../scripts/phase2_logic.mjs')
     const root = await mkdtemp(join(tmpdir(), 'ohos-phase2-batch-'))
     try {
-      await logic.createPhase2Workbook(join(root, 'RK3568', 'OpenHarmony兼容性申请_第二阶段.xlsx'))
+      await logic.createPhase2Workbook(join(root, 'RK3568', 'OpenHarmony兼容性申请资料.xlsx'))
       await mkdir(join(root, 'A537'), { recursive: true })
-      await logic.createPhase2Workbook(join(root, 'OpenHarmony兼容性批量结果_旧结果', 'OpenHarmony兼容性申请_第二阶段.xlsx'))
-      await writeFile(join(root, 'OpenHarmony兼容性申请_第二阶段.xlsx'), 'root workbook should not be treated as a child task')
+      await logic.createPhase2Workbook(join(root, 'OpenHarmony兼容性批量结果_旧结果', 'OpenHarmony兼容性申请资料.xlsx'))
+      await writeFile(join(root, 'OpenHarmony兼容性申请资料.xlsx'), 'root workbook should not be treated as a child task')
       const discovery = await logic.discoverPhase2Workbooks(root)
       expect(discovery.mode).toBe('batch')
       expect(discovery.items).toHaveLength(1)
@@ -159,7 +159,7 @@ describe('phase2 safety boundary', () => {
   it('accepts a single exact workbook path as a one-item discovery', async () => {
     const logic = await import('../scripts/phase2_logic.mjs')
     const root = await mkdtemp(join(tmpdir(), 'ohos-phase2-single-'))
-    const file = join(root, 'OpenHarmony兼容性申请_第二阶段.xlsx')
+    const file = join(root, 'OpenHarmony兼容性申请资料.xlsx')
     try {
       await writeFile(file, 'placeholder')
       const discovery = await logic.discoverPhase2Workbooks(file)
@@ -174,7 +174,7 @@ describe('phase2 safety boundary', () => {
     const logic = await import('../scripts/phase2_logic.mjs')
     const root = await mkdtemp(join(tmpdir(), 'ohos-phase2-batch-run-'))
     const directory = join(root, 'A333')
-    const workbookPath = join(directory, 'OpenHarmony兼容性申请_第二阶段.xlsx')
+    const workbookPath = join(directory, 'OpenHarmony兼容性申请资料.xlsx')
     try {
       await logic.createPhase2Workbook(workbookPath)
       await mkdir(join(directory, 'report'), { recursive: true })

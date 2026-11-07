@@ -98,6 +98,7 @@ export type SettingsCardProps = {
     /** 按 Excel 路径推导出的默认路径（只用于提示与回填，不触发动作）。 */
     derived?: DerivePathsResult | null;
     deriving?: boolean;
+    deriveError?: string;
     onChange: (field: keyof SettingsFormValues, value: string) => void;
     onPreflight: () => void;
     onSaveReport: () => void;

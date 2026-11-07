@@ -189,7 +189,7 @@ python3 {{SKILLS_DIR}}/openharmony-waiver-draft/scripts/process_directory.py \
 
 ## 兼容性申请（第二阶段）工作流
 
-当用户提供 `OpenHarmony兼容性申请_第二阶段.xlsx`（或其同级目录）时，执行兼容性测评申请的第二阶段：登录平台 → 按 xlsx 内容创建/补齐申请 → 上传附件 → 提交。
+当用户提供 `OpenHarmony兼容性申请资料.xlsx`（或其同级目录）时，执行兼容性测评申请的第二阶段：登录平台 → 按 xlsx 内容创建/补齐申请 → 上传附件 → 提交。
 
 ### xlsx 格式规范（平台申请表模板）
 
