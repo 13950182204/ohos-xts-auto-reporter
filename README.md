@@ -153,6 +153,37 @@ python3 skills/openharmony-waiver-draft/scripts/process_directory.py \
 
 空路径、路径不存在、账号密码缺失、已有任务在执行等同步失败仍返回 HTTP 200，结构为 `{ "ok": false, "error": "<中文原因>" }`；非 POST 返回 405。上传进度通过 `GET /api/ohos-xts-auto-reporter/status` 轮询：`state.kind` 为 `mirror`、`state.phase` 为 `uploading`，`state.progress` 形如 `{ "percent": 12.3, "stage": "解析固件", "detail": "…" }`（来自脚本的 `MIRROR_PROGRESS=` 行）。任务结束（无论成功或失败）时 `state.phase` 回到 `idle`、`state.finishedAt` 有值，结果行 `MIRROR_RESULT_JSON=` 里的 `fileName` / `fileSize` / `platformStatus` 原样放在 `state.mirror`。脚本缺失结果行或非 0 退出时 `state.ok` 为 `false`，`state.message` 带中文原因与脚本输出末尾 500 字（输出已脱敏，不含密码）。
 
+### 路径推导接口（设置页「Excel 文件或批量目录」字段）
+
+`POST /api/ohos-xts-auto-reporter/paths/derive`，请求体 `{ "workbookPath": "<Excel 文件或批量目录>" }`（也接受同义字段 `path`）。接口纯本地、不联网、不写文件：输入是**目录**时以它为根；输入是**文件**时以文件所在目录为根，再从根目录推出三份默认值。
+
+| 字段 | 推导规则 |
+| --- | --- |
+| `workbookPath` | 根目录下的 `OpenHarmony兼容性申请资料.xlsx`；没有则取根目录第一个匹配 `兼容性申请资料*.xlsx` 的文件（忽略 Excel 打开时留下的 `~$…` 锁文件）；输入本身就是该 xlsx 时原样返回 |
+| `waiverPath` | 根目录下的 `exemption/`（必须是目录） |
+| `mirrorPath` | 根目录**一层**内的固件包（`.zip` / `.7z` / `.tar` / `.tar.gz` / `.tar.bz2` / `.tar.xz`）：文件名含 8 位日期者优先 → 日期新的优先 → mtime 新的优先 |
+
+成功响应（`mirrorCandidates` 是全部候选，按同一优先级排序，第一个即 `mirrorPath`）：
+
+```json
+{
+  "ok": true,
+  "root": "/mnt/d/ohos/XTS6.1/DHong/DH-76AM-KS11C",
+  "workbookPath": "…/OpenHarmony兼容性申请资料.xlsx",
+  "waiverPath": "…/exemption",
+  "mirrorPath": "…/DH-76AM-KS11C-20261104.7z",
+  "mirrorCandidates": [{
+    "path": "…/DH-76AM-KS11C-20261104.7z",
+    "name": "DH-76AM-KS11C-20261104.7z",
+    "size": 677966057,
+    "modifiedAt": "2026-11-04T00:38:56.409Z"
+  }],
+  "warnings": []
+}
+```
+
+推不出来的字段留空并写进 `warnings`（如「未找到 .zip / .7z 固件包」「发现 N 个固件包，已选 <文件名>（最新的一个）」），此时仍是 `ok: true`——批量目录父层这类没有 xlsx/固件包的输入也能安全推导。只有空输入（`请先填写 Excel 文件或批量目录。`）和路径不存在（`路径不存在：<输入>`）是 `ok: false`。任何失败都返回 HTTP 200 `{ "ok": false, "error": "<中文原因>" }`（前端据此提示，不会误判成接口不存在），非 POST 返回 405。
+
 ## 安装
 
 插件有两种宿主，**两套 profile 各装各的**（互不影响）。

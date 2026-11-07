@@ -7,6 +7,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type { Phase2Settings as Phase2SettingsValue } from './config.ts'
+import { derivePaths } from './derive-paths.ts'
 import { parseMirrorProgressLine, parseMirrorResultLine, type MirrorResult } from './mirror-progress.ts'
 import { Phase2SettingsStore, readLegacySettings } from './settings-store.ts'
 
@@ -785,6 +786,24 @@ async function handleMirrorUpload(req: IncomingMessage, res: ServerResponse, set
   }
 }
 
+/**
+ * 本地路径推导：把设置页那行「Excel 文件或批量目录」推导成 申请资料 xlsx / 豁免目录 /
+ * 固件包 三个默认值。纯本地、不联网、不写文件，失败也返回 HTTP 200
+ * `{ ok:false, error }`（前端按同一结构提示，不会误判成「Host 上没有这个接口」）。
+ */
+async function handlePathsDerive(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: '只支持 POST。' })
+  try {
+    const body = await readBody(req)
+    // `workbookPath` 是契约字段，`path` 作为同义字段兼容；都缺时交给纯函数报中文提示。
+    const input = text(body.workbookPath) || text(body.path)
+    sendJson(res, 200, derivePaths(input))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    sendJson(res, 200, { ok: false, error: `推导路径失败：${message}` })
+  }
+}
+
 function handleStatus(req: IncomingMessage, res: ServerResponse): void {
   if (req.method !== 'GET') return sendJson(res, 405, { ok: false, message: '只支持 GET。' })
   sendJson(res, 200, { ok: true, state: { ...state } })
@@ -840,6 +859,8 @@ export function registerPhase2Routes(ctx: Context, settings: Phase2SettingsPlane
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/waiver/save', handler: (req, res) => handleWaiverRun(req, res, settings, 'save') },
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/waiver/scan', handler: (req, res) => handleWaiverScan(req, res, settings) },
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/mirror/upload', handler: (req, res) => handleMirrorUpload(req, res, settings) },
+    // 路径推导只依赖请求体里的那一行输入，不需要设置数据面。
+    { kind: 'exact', path: '/api/ohos-xts-auto-reporter/paths/derive', handler: (req, res) => handlePathsDerive(req, res) },
   ]
   // `/settings` 同时服务 GET（读）与 POST（写）：WebRoute 的 exact 只按路径分发，
   // 方法判定在各 handler 内部完成。

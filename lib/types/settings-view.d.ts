@@ -20,6 +20,21 @@ export type SettingsFormValues = {
     waiverPath: string;
     waiverAssessmentNumber: string;
 };
+/** 路径推导结果：由 Host 的 `paths/derive` 路由返回（只做本地文件系统推导，不触发任何提交）。 */
+export type DerivePathsResult = {
+    ok: boolean;
+    root?: string;
+    workbookPath?: string;
+    waiverPath?: string;
+    mirrorPath?: string;
+    mirrorCandidates?: Array<{
+        path?: string;
+        name?: string;
+        size?: number;
+    }>;
+    warnings?: string[];
+    message?: string;
+};
 export type SettingsView = {
     username?: string;
     workbookPath?: string;
@@ -80,6 +95,9 @@ export type SettingsCardProps = {
     result: ResponseState | null;
     state: Record<string, unknown> | undefined;
     scan: WaiverScan | null;
+    /** 按 Excel 路径推导出的默认路径（只用于提示与回填，不触发动作）。 */
+    derived?: DerivePathsResult | null;
+    deriving?: boolean;
     onChange: (field: keyof SettingsFormValues, value: string) => void;
     onPreflight: () => void;
     onSaveReport: () => void;

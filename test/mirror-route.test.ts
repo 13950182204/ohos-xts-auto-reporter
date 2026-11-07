@@ -152,6 +152,7 @@ describe('mirror upload route', () => {
       '/api/ohos-xts-auto-reporter/waiver/save',
       '/api/ohos-xts-auto-reporter/waiver/scan',
       '/api/ohos-xts-auto-reporter/mirror/upload',
+      '/api/ohos-xts-auto-reporter/paths/derive',
     ])
     expect(routes.every((route) => route.kind === 'exact')).toBe(true)
     const mirror = routes.find((route) => route.path === '/api/ohos-xts-auto-reporter/mirror/upload')

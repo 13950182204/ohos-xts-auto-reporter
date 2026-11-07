@@ -23,6 +23,18 @@ export type SettingsFormValues = {
   waiverAssessmentNumber: string
 }
 
+/** 路径推导结果：由 Host 的 `paths/derive` 路由返回（只做本地文件系统推导，不触发任何提交）。 */
+export type DerivePathsResult = {
+  ok: boolean
+  root?: string
+  workbookPath?: string
+  waiverPath?: string
+  mirrorPath?: string
+  mirrorCandidates?: Array<{ path?: string; name?: string; size?: number }>
+  warnings?: string[]
+  message?: string
+}
+
 export type SettingsView = {
   username?: string
   workbookPath?: string
@@ -88,6 +100,9 @@ export type SettingsCardProps = {
   result: ResponseState | null
   state: Record<string, unknown> | undefined
   scan: WaiverScan | null
+  /** 按 Excel 路径推导出的默认路径（只用于提示与回填，不触发动作）。 */
+  derived?: DerivePathsResult | null
+  deriving?: boolean
   onChange: (field: keyof SettingsFormValues, value: string) => void
   onPreflight: () => void
   onSaveReport: () => void
@@ -436,7 +451,24 @@ function batchPanel(
 }
 
 export function SettingsCardView(props: SettingsCardProps): ReactElement {
-  const { values, result, state, scan, busy, scanning } = props
+  const { values, result, state, scan, busy, scanning, derived, deriving } = props
+  // 只提示「已经按目录带出哪些路径」，不描述提交动作：回填永远不触发任何请求之外的行为。
+  const derivedFields = derived && derived.ok
+    ? [
+        derived.workbookPath ? '第二阶段 xlsx' : '',
+        derived.waiverPath ? '豁免资料路径' : '',
+        derived.mirrorPath ? '固件包路径' : '',
+      ].filter(Boolean)
+    : []
+  const deriveHint = deriving
+    ? '正在按该目录推导其它路径…'
+    : derived && derived.ok
+      ? [
+          derivedFields.length ? `已按该目录带出：${derivedFields.join(' · ')}` : '',
+          ...(derived.warnings ?? []),
+        ].filter(Boolean).join('；')
+      : ''
+
   const summaryState = state && !state.finishedAt && result
     ? { ...state, finishedAt: new Date().toISOString(), ok: result.ok, message: result.message, batch: result.batch ?? state.batch }
     : state
@@ -485,7 +517,8 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
         }),
         field({
           id: 'oh-xts-workbook', label: 'Excel 文件或批量目录', wide: true, value: values.workbookPath,
-          placeholder: '单个 Excel 或目录，例如 D:\\ohos\\XTS6.1\\DHong',
+          placeholder: '单个 Excel 或目录，例如 D:\\ohos\\XTS6.1\\DHong\\DH-76AM-HS26A',
+          hint: deriveHint || '填目录即可带出第二阶段 xlsx、exemption 与固件包路径；只填路径，不会自动提交。',
           disabled: busy, onChange: (value) => props.onChange('workbookPath', value),
         }),
         field({

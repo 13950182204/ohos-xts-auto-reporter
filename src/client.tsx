@@ -1,10 +1,11 @@
-import { createElement, useEffect, useState } from 'react'
+import { createElement, useEffect, useRef, useState } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 // 0.2.x 起 slots 服务由 ui-renderer 提供（dsh-client-runtime / dsh-client-ui-slots 均已从发布线移除）。
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
   SettingsCardView,
+  type DerivePathsResult,
   type ResponseState,
   type SettingsFormValues,
   type SettingsView,
@@ -24,6 +25,11 @@ const EMPTY_VALUES: SettingsFormValues = {
   waiverPath: '',
   waiverAssessmentNumber: '',
 }
+
+type PathField = 'workbookPath' | 'waiverPath' | 'mirrorPath'
+
+/** 只保存「上一轮由推导写入的值」，用来区分「用户手动改过」与「仍是自动带出的」。 */
+type AutoFilled = Partial<Record<PathField, string>>
 
 type ApiResult = { ok: boolean; message?: string }
 
@@ -87,6 +93,11 @@ export function ReporterSettingsCard() {
   const [hostState, setHostState] = useState<ResponseState | null>(null)
   const [scan, setScan] = useState<WaiverScan | null>(null)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  // 路径推导：只做「填 Excel → 带出其它路径」，绝不自动触发任何提交动作。
+  const [derived, setDerived] = useState<DerivePathsResult | null>(null)
+  const [deriving, setDeriving] = useState(false)
+  const autoFilledRef = useRef<AutoFilled>({})
+  const derivedForRef = useRef('')
 
   useEffect(() => {
     let active = true
@@ -121,6 +132,45 @@ export function ReporterSettingsCard() {
     const timer = window.setInterval(() => { void poll() }, 2500)
     return () => { active = false; window.clearInterval(timer) }
   }, [])
+
+  // 输入停顿 500ms 后按 Excel 路径推导其它路径；同一输入只请求一次。
+  useEffect(() => {
+    const input = values.workbookPath.trim()
+    if (!settingsLoaded || !input || derivedForRef.current === input) return
+    derivedForRef.current = input
+    let active = true
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setDeriving(true)
+        const response = await request<DerivePathsResult>('paths/derive', 'POST', { workbookPath: input })
+        if (!active) return
+        setDeriving(false)
+        setDerived(response)
+        if (!response.ok) return
+        const previousAuto = autoFilledRef.current
+        autoFilledRef.current = {
+          workbookPath: response.workbookPath,
+          waiverPath: response.waiverPath,
+          mirrorPath: response.mirrorPath,
+        }
+        setValues((previous) => {
+          const next = { ...previous }
+          const adopt = (field: PathField, value: string | undefined): void => {
+            if (!value) return
+            const current = previous[field]
+            // 空着就填；仍是上一轮自动带出的值就跟着更新；用户手动改过则绝不覆盖。
+            if (current && current !== previousAuto[field]) return
+            next[field] = value
+          }
+          adopt('workbookPath', response.workbookPath)
+          adopt('waiverPath', response.waiverPath)
+          adopt('mirrorPath', response.mirrorPath)
+          return next
+        })
+      })()
+    }, 500)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [values.workbookPath, settingsLoaded])
 
   function onChange(field: keyof SettingsFormValues, value: string): void {
     setValues((previous) => ({ ...previous, [field]: value }))
@@ -188,6 +238,8 @@ export function ReporterSettingsCard() {
     result,
     state: hostState?.state,
     scan,
+    derived,
+    deriving,
     onChange,
     onPreflight: () => { void run('preflight', { workbookPath: values.workbookPath.trim() }) },
     onSaveReport: () => { void run('save', { workbookPath: values.workbookPath.trim() }) },
