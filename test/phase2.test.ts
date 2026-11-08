@@ -155,6 +155,8 @@ describe('phase2 safety boundary', () => {
       selfCheckPath: '/mnt/d/ohos/XTS6.1/DHong/A537/OpenHarmony设备兼容性规范5.x自检表_标准系统.xlsx',
       reportPath: '/mnt/d/ohos/XTS6.1/DHong/A537/report/report.zip',
       mirrorPath: '',
+      layoutMigrated: false,
+      layoutWarning: '',
     })
 
     const directory = await mkdtemp(join(tmpdir(), 'ohos-phase2-attach-'))

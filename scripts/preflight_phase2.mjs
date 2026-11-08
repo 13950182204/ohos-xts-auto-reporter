@@ -14,8 +14,10 @@ try {
   for (const [index, item] of discovery.items.entries()) {
     console.log(`PHASE2_PROGRESS=${JSON.stringify({ percent: 10, stage: '扫描评测目录', detail: `正在预检 ${item.name}。`, itemIndex: index + 1, itemTotal: discovery.items.length, itemPercent: 10, workbookPath: item.workbookPath })}`);
     try {
-      const { record } = await readPhase2Workbook(item.workbookPath);
+      // 先 derive：旧版式工作簿会在这里就地升级成当前模板（带「内核」行、去掉外观图/PCID 两行），
+      // 之后再按新版式读取，避免「缺少内核」这种旧表必然报错。
       const attachments = await derivePhase2AttachmentPaths(item.workbookPath);
+      const { record } = await readPhase2Workbook(item.workbookPath);
       const attachmentErrors = await validatePhase2Attachments(attachments);
       const devices = record.type === 'release' ? record.devices : [record];
       items.push({
@@ -27,8 +29,13 @@ try {
         status: attachmentErrors.length ? 'blocked' : 'pending',
         percent: attachmentErrors.length ? 100 : 0,
         stage: attachmentErrors.length ? '预检失败' : '待处理',
-        detail: attachmentErrors.length ? attachmentErrors.join('；') : '预检通过，等待提交。',
+        detail: attachmentErrors.length
+          ? attachmentErrors.join('；')
+          : attachments.layoutWarning
+            ? `预检通过；${attachments.layoutWarning}`
+            : '预检通过，等待提交。',
         errors: attachmentErrors.length ? attachmentErrors : undefined,
+        layoutWarning: attachments.layoutWarning || undefined,
         summary: {
           type: record.type,
           sheetName: record.sheetName,

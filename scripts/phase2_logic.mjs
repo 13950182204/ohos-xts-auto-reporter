@@ -330,6 +330,62 @@ async function ensureReportArchive(directory, joinPath) {
   return toHostPath(zipPath);
 }
 
+
+/**
+ * 旧版式（有「外观图路径」「PCID.sc路径」、没有「内核」）会自动升级成当前模板：
+ * 这两行改由设备目录自动定位、内核是平台第 2 步必填项。升级失败不阻断流程，
+ * 只把原因作为 warning 返回（典型原因是 Windows 下 WPS/Excel 正打开着工作簿）。
+ */
+export async function ensureWorkbookLayout(workbookPath) {
+  const file = toHostPath(normalizeText(workbookPath));
+  if (!file || path.extname(file).toLowerCase() !== '.xlsx') return { migrated: false };
+  try {
+    await fs.stat(file);
+  } catch {
+    return { migrated: false };
+  }
+  let sheets
+  try {
+    const ExcelJS = loadExcelJs();
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(file);
+    // 三个设备类型工作表都要看：模板由旧版式迁移时三张表都缺「内核」。
+    sheets = workbook.worksheets
+      .map((sheet) => sheetLabelIndex(sheet))
+      .filter((index) => index.has('操作系统类型') || index.has('处理状态'))
+  } catch {
+    // 读不动（占位文件、损坏、被独占打开）就当不是旧版式，交给后续读取去报错。
+    return { migrated: false };
+  }
+  if (!sheets.length) return { migrated: false };
+  const stale = sheets.some((index) => index.has('外观图路径') || index.has('PCID.sc路径') || !index.has('内核'));
+  if (!stale) return { migrated: false };
+  try {
+    await ensureWorkbookWritable(file, { attempts: 1 });
+    const record = (await readWorkbook(file)).record;
+    // 内核是平台第 2 步必填项，且与操作系统类型一一对应（标准系统=Linux、
+    // 小型系统=LiteOS-A、轻量系统=LiteOS-M），迁移时顺手补上，省得用户再被「缺少内核」挡一次。
+    if (!normalizeText(record.systemKernel)) {
+      record.systemKernel = KERNEL_BY_SYSTEM_TYPE[record.systemType] || '';
+    }
+    await rewriteWorkbookLayout(file, record);
+    return { migrated: true, warning: '' };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    return {
+      migrated: false,
+      warning: `工作簿还是旧版式（缺少「内核」行、仍带「外观图路径」「PCID.sc路径」），自动升级未成功：${detail}`,
+    }
+  }
+}
+
+/** 操作系统类型 → 内核（平台字典 system_kernel 的固定搭配）。 */
+const KERNEL_BY_SYSTEM_TYPE = Object.freeze({
+  标准系统: 'Linux',
+  小型系统: 'LiteOS-A',
+  轻量系统: 'LiteOS-M',
+});
+
 export async function derivePhase2AttachmentPaths(workbookPath) {
   const input = normalizeText(workbookPath);
   const windows = /^([a-zA-Z]:[\\/])/.test(input);
@@ -337,6 +393,7 @@ export async function derivePhase2AttachmentPaths(workbookPath) {
   const directory = windows
     ? path.win32.dirname(input.replaceAll('/', '\\'))
     : path.dirname(toHostPath(input));
+  const layout = await ensureWorkbookLayout(input);
   await ensureReportArchive(directory, joinPath);
   const exactSelfCheck = joinPath(directory, PHASE2_SELF_CHECK_NAME);
   const exactReport = joinPath(directory, 'report', PHASE2_REPORT_NAME);
@@ -350,6 +407,8 @@ export async function derivePhase2AttachmentPaths(workbookPath) {
     selfCheckPath: selfCheckPath || toHostPath(exactSelfCheck),
     reportPath: reportPath || toHostPath(exactReport),
     mirrorPath: '',
+    layoutMigrated: layout.migrated,
+    layoutWarning: layout.warning ?? '',
   };
 }
 

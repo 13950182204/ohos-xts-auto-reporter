@@ -1130,6 +1130,8 @@ async function main() {
   let input;
   try {
     reportProgress(5, '读取申请工作簿', '正在读取第二阶段 Excel。');
+    // 旧版式先升级再读：derivePhase2AttachmentPaths 内部会调 ensureWorkbookLayout。
+    await derivePhase2AttachmentPaths(options.workbook);
     input = await readPhase2Workbook(options.workbook);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
