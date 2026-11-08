@@ -84,8 +84,10 @@ function withinRoot(rootPath, target) {
  * 识别一份豁免报告的测试套分类（分类不再人工填写）。
  *
  * 优先级：
- * ① 从报告所在目录向上、最多到 rootPath，找第一个能映射的目录名——目录结构是豁免资料
- *    的事实来源，平台提交路径也由它推导；
+ * ① 在报告所在目录到 rootPath 之间找「最外层」能映射的目录名——目录结构是豁免资料
+ *    的事实来源，平台提交路径也由它推导。取最外层而不是最近命中，是因为模块目录可能
+ *    恰好叫 `Acts` / `ActsValidator`（例如 `exemption/ActsValidator/ActsValidator/…`），
+ *    最近祖先规则会把模块目录误判成分类目录；
  * ② 报告首部 `测试报告：ACTS 全量报告 …` 作为二级兜底（正文里的
  *    「平台提交路径 Acts/<模块名>/<套件名>.txt」是模板占位符，不解析）；
  * ③ 都没有时 testCategory 为空串，由调用方报「无法识别测试套分类」。
@@ -98,15 +100,19 @@ export function detectTestCategory({ reportPath, rootPath, reportText } = {}) {
   const boundary = rootPath ? path.resolve(rootPath) : '';
   const bounded = boundary !== '' && withinRoot(boundary, report);
   let current = path.dirname(report);
+  let detected = null;
   while (true) {
     const folder = path.basename(current);
     const testCategory = normalizeTestCategory(folder);
-    if (testCategory) return { testCategory, categoryFolder: folder, categoryDirectory: current };
+    // 命中后继续向上：boundary 之内最外层的那个命中才是分类目录，
+    // 避免模块目录与分类目录同名时把模块目录当分类目录。
+    if (testCategory) detected = { testCategory, categoryFolder: folder, categoryDirectory: current };
+    if (bounded && current === boundary) break;
     const parent = path.dirname(current);
     if (parent === current) break;
-    if (bounded && current === boundary) break;
     current = parent;
   }
+  if (detected) return detected;
   const header = REPORT_HEADER_RE.exec(String(reportText ?? ''));
   if (header) {
     const testCategory = normalizeTestCategory(header[1]);

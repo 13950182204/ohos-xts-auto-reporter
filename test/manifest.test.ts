@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * DSH 0.2.1-rc.1 适配回归锁。
+ * DSH 0.2.x 适配回归锁。
  *
  * 0.2.x 发布线移除了 `@deepseek-ai/dsh-client-runtime`：浏览器半区的 `ctx.slots`
  * 改由 `@deepseek-ai/dsh-client-ui-renderer` 提供。这里锁住 manifest 的兼容声明与
@@ -22,10 +22,12 @@ const root = process.cwd()
 const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as Manifest
 const clientSource = readFileSync(join(root, 'src', 'client.tsx'), 'utf8')
 
-describe('DSH 0.2.1-rc.1 compatibility manifest', () => {
-  it('declares the 0.2.1-rc.1 engine baseline and compatibility mark', () => {
-    expect(manifest.dsh?.engines?.dsh).toBe('>=0.2.1-rc.1')
+describe('DSH 0.2.x compatibility manifest', () => {
+  it('declares the 0.2.x engine range and compatibility marks', () => {
+    expect(manifest.dsh?.engines?.dsh).toBe('>=0.2.1-rc.1 <0.3.0')
     expect(manifest.dsh?.compatibility?.dshReleases?.['0.2.1-rc.1']).toBe('compatible')
+    expect(manifest.dsh?.compatibility?.dshReleases?.['0.2.1-rc.3']).toBe('compatible')
+    expect(manifest.dsh?.compatibility?.dshReleases?.['0.2.2-rc.1']).toBe('compatible')
   })
 
   it('resolves the browser slots service from ui-renderer, not the removed client-runtime', () => {

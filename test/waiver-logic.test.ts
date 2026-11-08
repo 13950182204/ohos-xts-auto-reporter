@@ -108,6 +108,39 @@ describe('test category detection: folder structure first, report header as fall
     expect(detectTestCategory({ reportPath: '/scan/Ssts/ModuleA/SuiteA.txt', rootPath: '/scan' }).testCategory).toBe('SSTS')
   })
 
+  // T13：模块目录可能恰好与分类目录同名（豁免资料按 <分类>/<模块>/<套件> 组织，
+  // 模块名就叫 ActsValidator 时会出现 ActsValidator/ActsValidator/ 两层）。分类目录
+  // 必须取 boundary 之下最外层的命中，不能被最近祖先规则带偏。
+  it('does not mistake a module folder named ActsValidator for the category folder', () => {
+    const detected = detectTestCategory({
+      reportPath: `${root}/ActsValidator/ActsValidator/ActsAudioTest.txt`,
+      rootPath: root,
+    })
+    expect(detected).toEqual({
+      testCategory: 'ACTS-Validator',
+      categoryFolder: 'ActsValidator',
+      categoryDirectory: `${root}/ActsValidator`,
+    })
+  })
+
+  it('keeps the outer category when a module folder is named after another category', () => {
+    const detected = detectTestCategory({
+      reportPath: `${root}/ActsValidator/Acts/ActsDemoTest.txt`,
+      rootPath: root,
+    })
+    expect(detected.testCategory).toBe('ACTS-Validator')
+    expect(detected.categoryDirectory).toBe(`${root}/ActsValidator`)
+  })
+
+  it('picks the outermost match for a single-file input without rootPath', () => {
+    const detected = detectTestCategory({ reportPath: `${root}/Acts/Acts/ActsDemoTest.txt` })
+    expect(detected).toEqual({
+      testCategory: 'ACTS',
+      categoryFolder: 'Acts',
+      categoryDirectory: `${root}/Acts`,
+    })
+  })
+
   it('still detects the category from deeper directories below the module', () => {
     const detected = detectTestCategory({ reportPath: `${root}/Acts/ModuleA/rerun/SuiteA.txt`, rootPath: root })
     expect(detected.testCategory).toBe('ACTS')

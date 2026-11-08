@@ -7,8 +7,8 @@ OpenHarmony XTS 兼容性测试自动上报 DSH 插件（Host + Web client 双�
 
 新增模块：**兼容性申请第二阶段资料处理**。DSH 设置页会出现插件卡片，可填写账号、密码、第二阶段 Excel 路径或批量根目录和联系人资料，并执行本地预检或保存资料。
 
-> **DSH 兼容性（0.2.1 / 当前基线 0.2.1-rc.3）**：本插件已适配 **DSH 0.2.1-rc.3**（同时兼容 0.2.1-rc.1 起）。
-> `dsh.engines.dsh` 为 `>=0.2.1-rc.1`，`dsh.compatibility.dshReleases` 标记 `0.2.1-rc.1` / `0.2.1-rc.3` 为 compatible；
+> **DSH 兼容性（0.2.x / 当前基线 0.2.2-rc.1）**：本插件已适配 **DSH 0.2.2-rc.1**（同时兼容 0.2.1-rc.1 起）。
+> `dsh.engines.dsh` 为 `>=0.2.1-rc.1 <0.3.0`（0.3.x 需重新适配），`dsh.compatibility.dshReleases` 标记 `0.2.1-rc.1` / `0.2.1-rc.3` / `0.2.2-rc.1` 为 compatible；
 > 0.3.2 起去掉了残留的 `@deepseek-ai/dsh-client-ui-slots` 依赖（inject / peer / dev）：浏览器半区的 `ctx.slots` 服务
 > 统一由 `@deepseek-ai/dsh-client-ui-renderer` 提供，`dsh-client-runtime`、`dsh-client-ui-slots` 均已从 0.2.x 发布线移除。
 > 本插件**不使用子代理 API**（没有 `ctx.subagents.start`），因此不涉及 `start` → `startActivation` 迁移；
