@@ -131,7 +131,7 @@ node scripts/desktop-reinstall.mjs   # 打包并装进 desktop profile
 
 - Host 路由都在 `/api/ohos-xts-auto-reporter/`：`status`、`settings`、`preflight`、`save`、`waiver/preflight`、`waiver/save`、`waiver/scan`、`mirror/upload`、`paths/derive`、`phase2/drafts`。
 - 宿主差异：桌面侧脚本子进程需 `ELECTRON_RUN_AS_NODE=1`；路径按 `toHostPath()` 在 `/mnt/d/...` 与 `D:/...` 间转换；设置自持在 `~/.dsh/ohos-xts-auto-reporter.json`（0600）。
-- 开发：`pnpm build` / `pnpm test`（vitest）/ `pnpm test:python`；截图由组件真实渲染生成（数据为示例），标注脚本 `docs/tools/annotate_shots.py`。
+- 开发：`pnpm build` / `pnpm test`（vitest）/ `pnpm test:python`；截图由组件真实渲染生成（数据为示例）；标注脚本 `docs/tools/annotate_shots.py`，坐标量取 `docs/tools/measure_shot_boxes.mjs`，箭头落点自检 `docs/tools/verify_shots.py`（13 条箭头全部命中控件才算通过）。
 - 安全边界：凭据只存本机 0600 文件或 `OH_USERNAME`/`OH_PASSWORD`，不写日志；只调用保存类接口，从不调用提交、确认提交；不删平台任何记录。
 
 </details>
