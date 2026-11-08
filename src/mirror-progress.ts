@@ -32,6 +32,8 @@ export type MirrorResult = {
   stage?: string
   /** 平台镜像管理里已有同名文件，本次没有重复上传。 */
   skipped?: boolean
+  /** 平台里同名镜像的条数（>1 说明历史上有重复记录）。 */
+  duplicates?: number
 }
 
 function trimText(value: unknown): string {
@@ -101,5 +103,7 @@ export function parseMirrorResultLine(line: string): MirrorResult | undefined {
   const stage = trimText(value.stage)
   if (stage) result.stage = stage
   if (value.skipped === true) result.skipped = true
+  const duplicates = finiteNumber(value.duplicates)
+  if (duplicates !== undefined && duplicates > 0) result.duplicates = Math.round(duplicates)
   return result
 }

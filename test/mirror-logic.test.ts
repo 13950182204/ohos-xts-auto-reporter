@@ -303,6 +303,20 @@ describe('duplicate detection against 镜像管理', () => {
     expect(match.matched).toBe(true)
     expect(match.notCompleted).toBe(false)
     expect(match.sizeMismatch).toBe(false)
+    expect(match.duplicateCount).toBe(1)
+  })
+
+  it('counts historic duplicates and keeps their upload times', () => {
+    const match = findMirrorMatch(
+      [
+        { fileName: 'firmware.7z', uploadTime: '2026-11-08 13:34:16', fileSize: 100, isCompleted: 1 },
+        { fileName: 'firmware.7z', uploadTime: '2026-11-08 01:38:18', fileSize: 100, isCompleted: 1 },
+      ],
+      'firmware.7z',
+      { sizeBytes: 100 },
+    )
+    expect(match.duplicateCount).toBe(2)
+    expect(match.uploadTimes).toEqual(['2026-11-08 13:34:16', '2026-11-08 01:38:18'])
   })
 
   it('flags an unfinished record so the caller can continue instead of skipping', () => {

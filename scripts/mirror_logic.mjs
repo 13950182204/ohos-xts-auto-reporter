@@ -214,6 +214,10 @@ export function findMirrorMatch(rows, fileName, { sizeBytes = 0 } = {}) {
     return name === target;
   });
   if (!candidates.length) return { matched: false };
+  const duplicateCount = candidates.length;
+  const uploadTimes = candidates
+    .map((row) => (typeof row?.uploadTime === 'string' ? row.uploadTime.trim() : ''))
+    .filter(Boolean);
   const completed = candidates.find((row) => isCompletedMirrorRow(row));
   const row = completed || candidates[0];
   const rowSize = Number(row?.fileSize);
@@ -225,6 +229,8 @@ export function findMirrorMatch(rows, fileName, { sizeBytes = 0 } = {}) {
   return {
     matched: true,
     row,
+    duplicateCount,
+    uploadTimes,
     sizeMismatch,
     notCompleted: !completed,
   };

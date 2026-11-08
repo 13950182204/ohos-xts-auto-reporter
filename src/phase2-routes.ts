@@ -747,6 +747,7 @@ async function finishMirrorRun(execution: Promise<{ code: number; output: string
         fileSize: parsed.fileSize,
         platformStatus: parsed.platformStatus,
         skipped: parsed.skipped,
+        duplicates: parsed.duplicates,
       } : undefined,
       progress: { percent: 100, stage: '已结束', detail: message },
     })

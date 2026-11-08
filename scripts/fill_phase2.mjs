@@ -9,6 +9,7 @@ import {
   derivePhase2AttachmentPaths,
   isAssessmentNumber,
   normalizeComparable,
+  normalizePatchDate,
   normalizeText,
   readPhase2Workbook,
   ensureWorkbookWritable,
@@ -240,7 +241,12 @@ async function platformRequest(page, endpoint, options = {}) {
   if (!response.ok() || payload?.code !== 200) {
     const message = payload?.msg || `平台接口失败: ${endpoint}`;
     const detail = payload?.body?.message || payload?.body?.msg || payload?.body?.error || '';
-    throw new ApplicationError('PLATFORM_REQUEST_FAILED', `${message}${detail ? ` (${detail})` : ''} [${endpoint}, HTTP ${response.status()}]`);
+    const status = response.status();
+    // 500 最常见的原因：申请引用的镜像文件在「镜像管理」里被删掉了，平台读这条申请就炸。
+    const hint = status === 500 && endpoint.includes('getCertificationInfoById')
+      ? '；这条申请可能引用了已被删除的镜像文件，请到平台打开该申请重新选择镜像，或清理这条草稿后重新提交'
+      : '';
+    throw new ApplicationError('PLATFORM_REQUEST_FAILED', `${message}${detail ? ` (${detail})` : ''} [${endpoint}, HTTP ${status}]${hint}`);
   }
   return payload.body;
 }
@@ -898,7 +904,8 @@ export function softwareDifferences(current, record) {
   const differences = [];
   const expected = expectedSoftwareValues(record);
   diff('软件版本号', current.softwareVersion, expected.softwareVersion, differences);
-  diff('安全补丁标签', current.patchLevel, expected.securityPatch, differences);
+  // 平台可能回传 `2026-11-01` 或 `2026/11/01`，两边都归一后再比，避免只因分隔符不同判成不一致。
+  diff('安全补丁标签', normalizePatchDate(current.patchLevel), expected.securityPatch, differences);
   const actualIds = splitVersionValue(current.versionId);
   const actualHashes = splitVersionValue(current.versionHash);
   for (const [index, expectedId] of expected.versionIds.entries()) {

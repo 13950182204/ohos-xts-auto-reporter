@@ -409,6 +409,7 @@ function mirrorPanel(
   const size = formatFileSize(num(mirror?.fileSize))
   const platformStatus = str(mirror?.platformStatus)
   const skipped = mirror?.skipped === true
+  const duplicates = num(mirror?.duplicates) ?? 0
   const running = phase !== 'idle'
   const failed = ok === false
   const value = clampPercent(percent) ?? (running ? 0 : failed ? 0 : 100)
@@ -434,6 +435,12 @@ function mirrorPanel(
     detail ? createElement('div', { className: 'oh-xts__path' }, detail) : null,
     platformStatus
       ? createElement('p', { className: 'oh-xts__path' }, `平台回执：${platformStatus}`)
+      : null,
+    duplicates > 1
+      ? createElement('p', {
+        className: 'oh-xts__path',
+        style: { color: 'var(--oh-warn)' },
+      }, `平台「镜像管理」里有 ${duplicates} 条同名镜像，属历史重复；这里只提示不删除，需要时请到平台手动清理。`)
       : null,
     running && busy
       ? createElement('p', { className: 'oh-xts__muted' }, '上传期间不要关闭设置页；完成后这里会显示平台回执。')

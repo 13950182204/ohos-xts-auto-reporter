@@ -832,11 +832,16 @@ async function main() {
       const row = existing.row ?? {};
       const uploadedAt = String(row.uploadTime ?? '').trim();
       const notes = [`平台镜像管理里已有同名文件「${uploadFileName}」${uploadedAt ? `（上传时间 ${uploadedAt}）` : ''}，本次跳过上传。`];
+      if ((existing.duplicateCount ?? 1) > 1) {
+        const times = (existing.uploadTimes ?? []).slice(0, 6).join('、');
+        notes.push(`注意：平台有 ${existing.duplicateCount} 条同名记录${times ? `（${times}${existing.uploadTimes.length > 6 ? ' 等' : ''}）` : ''}，属历史重复，可到「镜像管理」手动删除多余记录。`);
+      }
       if (existing.sizeMismatch) notes.push('注意：平台记录的大小与本地文件不一致，需要时请到平台先删除那条记录再重传。');
       await safeScreenshot(page, artifacts, 'mirror-already-exists');
       const result = {
         ok: true,
         skipped: true,
+        duplicates: existing.duplicateCount ?? 1,
         fileName: uploadFileName,
         originalFileName,
         fileSize: resolution.sizeBytes,

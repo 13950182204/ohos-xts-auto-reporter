@@ -29,6 +29,8 @@ export type MirrorResult = {
     stage?: string;
     /** 平台镜像管理里已有同名文件，本次没有重复上传。 */
     skipped?: boolean;
+    /** 平台里同名镜像的条数（>1 说明历史上有重复记录）。 */
+    duplicates?: number;
 };
 /** 0–100 的百分数：非法值返回 undefined，越界夹紧，最多保留一位小数。 */
 export declare function clampMirrorPercent(value: unknown): number | undefined;
