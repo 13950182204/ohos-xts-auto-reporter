@@ -1,3 +1,10 @@
+"""给 README 截图加编号圆点 + 箭头 + 按钮高亮框。
+
+坐标不要靠眼睛量：先用 docs/tools/measure_shot_boxes.mjs 在渲染页里拿真实元素
+getBoundingClientRect()（CSS px），乘以 deviceScaleFactor=2 换成截图像素，再裁剪标注。
+箭头端点：tip_canvas_x = local_x + PAD - 14；local_x 是控件左缘相对裁剪框的像素。
+"""
+
 from PIL import Image, ImageDraw, ImageFont
 import math, os
 
