@@ -4,6 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { chromium } from 'playwright';
 import {
+  findMirrorMatch,
   formatBytes,
   formatSpeed,
   overallPercent,
@@ -256,6 +257,46 @@ async function openMirrorPage(page, artifacts) {
     throw new MirrorUploadError('MIRROR_PAGE_NOT_READY', `镜像管理页没有出现「上传文件」按钮（当前地址：${page.url()}）。`);
   }
   await safeScreenshot(page, artifacts, 'mirror-page');
+}
+
+/**
+ * 在镜像管理页按文件名过滤，把列表读成结构化记录。
+ * 平台列表接口要求带登录态（页内裸 fetch 只拿到 `{code,msg}`），所以走 UI：
+ * 填「请输入文件名称」→ 点 `.btn3` 的「查询」→ 读表格行。
+ * 行结构：[序号, 文件名称, 上传人, 上传时间, 文件大小(MB), 已上传, 操作]。
+ */
+async function searchMirrorRows(page, fileName) {
+  const keyword = String(fileName).replace(/\.(?:tar\.gz|tar\.bz2|tar\.xz|zip|7z|rar|tar)$/i, '');
+  const searchInput = page.locator('input[placeholder="请输入文件名称"]').first();
+  if (await searchInput.count() === 0) return null;
+  await searchInput.fill(keyword).catch(() => {});
+  await page.locator('div.btn3').filter({ hasText: '查询' }).first().click({ timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(1800);
+  return readMirrorRows(page);
+}
+
+/** 先把列表行转成 findMirrorMatch 需要的形状（把 MB 换回字节、百分比换成分数）。 */
+async function findExistingMirror(page, fileName, sizeBytes) {
+  let rows;
+  try {
+    rows = await searchMirrorRows(page, fileName);
+  } catch (error) {
+    // 列表读不到就当「没查到」：宁可多传一次，也不要因为读列表失败把上传卡死。
+    return { matched: false, error: error?.message ?? String(error) };
+  }
+  if (!rows) return { matched: false };
+  const records = rows.map((cells) => {
+    const percent = percentFromCell(cells[5]);
+    const megabytes = Number(String(cells[4] ?? '').replace(/[^\d.]/g, ''));
+    return {
+      fileName: String(cells[1] ?? '').trim(),
+      uploadTime: String(cells[3] ?? '').trim(),
+      fileSize: Number.isFinite(megabytes) && megabytes > 0 ? Math.round(megabytes * 1024 * 1024) : 0,
+      percent,
+      isCompleted: percent >= 100 ? 1 : 0,
+    };
+  });
+  return findMirrorMatch(records, fileName, { sizeBytes });
 }
 
 /** 点「上传文件」，必要时点掉公告中心弹窗，等到文件名规则提示框出现。 */
@@ -784,6 +825,40 @@ async function main() {
       emitResult(result);
       console.error(result.message);
       return;
+    }
+
+    const existing = await findExistingMirror(page, uploadFileName, resolution.sizeBytes);
+    if (existing.matched && !existing.notCompleted) {
+      const row = existing.row ?? {};
+      const uploadedAt = String(row.uploadTime ?? '').trim();
+      const notes = [`平台镜像管理里已有同名文件「${uploadFileName}」${uploadedAt ? `（上传时间 ${uploadedAt}）` : ''}，本次跳过上传。`];
+      if (existing.sizeMismatch) notes.push('注意：平台记录的大小与本地文件不一致，需要时请到平台先删除那条记录再重传。');
+      await safeScreenshot(page, artifacts, 'mirror-already-exists');
+      const result = {
+        ok: true,
+        skipped: true,
+        fileName: uploadFileName,
+        originalFileName,
+        fileSize: resolution.sizeBytes,
+        extension: resolution.extension,
+        percent: 100,
+        stage: '已存在',
+        platformStatus: `已存在${uploadedAt ? `（${uploadedAt}）` : ''}`,
+        message: notes.join(''),
+        artifacts,
+        durationMs: Date.now() - startedAt,
+      };
+      await writeResult(artifacts, result);
+      emitResult(result);
+      console.error(`[mirror] ${result.message}`);
+      return;
+    }
+    if (existing.matched && existing.notCompleted) {
+      emitProgress({
+        percent: 0,
+        stage: '重新上传',
+        detail: `平台已有同名文件但还没传完，本次继续上传「${uploadFileName}」。`,
+      });
     }
 
     const uploadStartedAt = Date.now();

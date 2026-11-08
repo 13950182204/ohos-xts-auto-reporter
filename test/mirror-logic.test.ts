@@ -10,6 +10,8 @@ import {
   ALLOWED_NAME_PATTERN,
   MIRROR_EXTENSIONS,
   detectMirrorExtension,
+  findMirrorMatch,
+  isCompletedMirrorRow,
   formatBytes,
   formatSpeed,
   overallPercent,
@@ -288,5 +290,54 @@ describe('CLI argument parsing', () => {
     expect(() => parseMirrorArgs(['--nope'])).toThrow(/未知参数/)
     expect(() => parseMirrorArgs([])).toThrow(/--input/)
     expect(() => parseMirrorArgs(['--input'])).toThrow(/需要一个值/)
+  })
+})
+
+describe('duplicate detection against 镜像管理', () => {
+  it('matches the same file name and reports as already uploaded', () => {
+    const match = findMirrorMatch(
+      [{ fileName: 'DH-76AM-KS11C-20261104.7z', fileSize: 679477248, isCompleted: 1 }],
+      'DH-76AM-KS11C-20261104.7z',
+      { sizeBytes: 679477248 },
+    )
+    expect(match.matched).toBe(true)
+    expect(match.notCompleted).toBe(false)
+    expect(match.sizeMismatch).toBe(false)
+  })
+
+  it('flags an unfinished record so the caller can continue instead of skipping', () => {
+    const match = findMirrorMatch(
+      [{ fileName: 'firmware.7z', fileSize: 100, isCompleted: 0 }],
+      'firmware.7z',
+      { sizeBytes: 100 },
+    )
+    expect(match.matched).toBe(true)
+    expect(match.notCompleted).toBe(true)
+  })
+
+  it('prefers a completed record when both exist and reports size differences', () => {
+    const match = findMirrorMatch(
+      [
+        { fileName: 'firmware.7z', fileSize: 600_000_000, isCompleted: 0 },
+        { fileName: 'firmware.7z', fileSize: 700_000_000, isCompleted: 1 },
+      ],
+      'firmware.7z',
+      { sizeBytes: 600_000_000 },
+    )
+    expect(match.notCompleted).toBe(false)
+    expect(match.sizeMismatch).toBe(true)
+  })
+
+  it('does not match different names, empty input, or missing rows', () => {
+    expect(findMirrorMatch([{ fileName: 'a.7z', isCompleted: 1 }], 'b.7z').matched).toBe(false)
+    expect(findMirrorMatch([{ fileName: 'a.7z', isCompleted: 1 }], '').matched).toBe(false)
+    expect(findMirrorMatch(undefined, 'a.7z').matched).toBe(false)
+  })
+
+  it('treats completed flags from old payloads (bool / string) the same way', () => {
+    expect(isCompletedMirrorRow({ isCompleted: true })).toBe(true)
+    expect(isCompletedMirrorRow({ isCompleted: '1' })).toBe(true)
+    expect(isCompletedMirrorRow({ isCompleted: '0' })).toBe(false)
+    expect(isCompletedMirrorRow({})).toBe(false)
   })
 })

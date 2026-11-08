@@ -30,6 +30,8 @@ export type MirrorResult = {
   errorCode?: string
   percent?: number
   stage?: string
+  /** 平台镜像管理里已有同名文件，本次没有重复上传。 */
+  skipped?: boolean
 }
 
 function trimText(value: unknown): string {
@@ -98,5 +100,6 @@ export function parseMirrorResultLine(line: string): MirrorResult | undefined {
   if (percent !== undefined) result.percent = percent
   const stage = trimText(value.stage)
   if (stage) result.stage = stage
+  if (value.skipped === true) result.skipped = true
   return result
 }

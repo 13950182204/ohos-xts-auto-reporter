@@ -200,6 +200,44 @@ export function resolveMirrorFile(inputPath) {
  * 例：`DH-76AM-KS11C-20261104.7z解析中：12.40%`、`…上传中：35.57%`、`校验中100.00%`、完成类文案。
  * 文本里同时出现多行时取最后一条阶段信息（最新状态）。
  */
+/**
+ * 平台镜像列表里是否已经存在同名文件。
+ * 平台「镜像管理」按文件名去重不严（同名可以传多条），所以上传前先自己判一次：
+ * 已经有同名且已完成的记录就不再传，避免把同一条固件重复刷进列表。
+ * 返回 { matched, row, sizeMismatch, notCompleted }，方便调用方给出可读原因。
+ */
+export function findMirrorMatch(rows, fileName, { sizeBytes = 0 } = {}) {
+  const target = typeof fileName === 'string' ? fileName.trim() : '';
+  if (!target || !Array.isArray(rows)) return { matched: false };
+  const candidates = rows.filter((row) => {
+    const name = typeof row?.fileName === 'string' ? row.fileName.trim() : '';
+    return name === target;
+  });
+  if (!candidates.length) return { matched: false };
+  const completed = candidates.find((row) => isCompletedMirrorRow(row));
+  const row = completed || candidates[0];
+  const rowSize = Number(row?.fileSize);
+  const localSize = Number(sizeBytes);
+  const tolerance = Number.isFinite(localSize) && localSize > 0 ? Math.max(4096, localSize * 0.005) : 0;
+  const sizeMismatch = Number.isFinite(rowSize) && rowSize > 0 && localSize > 0
+    ? Math.abs(rowSize - localSize) > tolerance
+    : false;
+  return {
+    matched: true,
+    row,
+    sizeMismatch,
+    notCompleted: !completed,
+  };
+}
+
+/** 平台用 isCompleted=1 表示这条镜像已经传完；老接口有的返回布尔/字符串，一并兼容。 */
+export function isCompletedMirrorRow(row) {
+  const value = row?.isCompleted;
+  if (value === true) return true;
+  if (value === false || value === null || value === undefined) return false;
+  return String(value).trim() === '1' || String(value).trim().toLowerCase() === 'true';
+}
+
 export function parseUploadProgressText(text) {
   const raw = String(text ?? '');
   if (!raw.trim()) return { stage: null, percent: null };

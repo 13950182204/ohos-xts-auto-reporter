@@ -27,6 +27,8 @@ export type MirrorResult = {
     errorCode?: string;
     percent?: number;
     stage?: string;
+    /** 平台镜像管理里已有同名文件，本次没有重复上传。 */
+    skipped?: boolean;
 };
 /** 0–100 的百分数：非法值返回 undefined，越界夹紧，最多保留一位小数。 */
 export declare function clampMirrorPercent(value: unknown): number | undefined;

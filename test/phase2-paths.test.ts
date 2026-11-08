@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { detectAdjacentFile, detectFirmwareNearWorkbook } from '../scripts/fill_phase2.mjs'
-import { createPhase2Workbook, derivePhase2AttachmentPaths, ensureWorkbookLayout } from '../scripts/phase2_logic.mjs'
+import { createPhase2Workbook, derivePhase2AttachmentPaths, ensureWorkbookLayout, normalizePatchDate } from '../scripts/phase2_logic.mjs'
 import ExcelJS from 'exceljs'
 import { packDirectoryToZip } from '../scripts/report_archive.mjs'
 
@@ -178,5 +178,21 @@ describe('workbook layout migration', () => {
     const workbookPath = path.join(directory, 'OpenHarmony兼容性申请资料.xlsx')
     await createPhase2Workbook(workbookPath)
     expect(await ensureWorkbookLayout(workbookPath)).toEqual({ migrated: false })
+  })
+})
+
+describe('security patch date format', () => {
+  it('normalizes every accepted spelling to YYYY/MM/DD', () => {
+    expect(normalizePatchDate('2026-11-1')).toBe('2026/11/01')
+    expect(normalizePatchDate('2026-11-01')).toBe('2026/11/01')
+    expect(normalizePatchDate('2026/11/01')).toBe('2026/11/01')
+    expect(normalizePatchDate('2026.1.5')).toBe('2026/01/05')
+    expect(normalizePatchDate('2026年03月07日')).toBe('2026/03/07')
+    expect(normalizePatchDate('20261101')).toBe('2026/11/01')
+  })
+
+  it('keeps unknown text and empty values untouched', () => {
+    expect(normalizePatchDate('')).toBe('')
+    expect(normalizePatchDate('2026-11')).toBe('2026-11')
   })
 })

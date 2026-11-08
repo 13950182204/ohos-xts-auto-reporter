@@ -408,10 +408,11 @@ function mirrorPanel(
   const fileName = str(mirror?.fileName)
   const size = formatFileSize(num(mirror?.fileSize))
   const platformStatus = str(mirror?.platformStatus)
+  const skipped = mirror?.skipped === true
   const running = phase !== 'idle'
   const failed = ok === false
   const value = clampPercent(percent) ?? (running ? 0 : failed ? 0 : 100)
-  const title = running ? '正在上传固件' : failed ? '固件上传失败' : '固件上传完成'
+  const title = running ? '正在上传固件' : failed ? '固件上传失败' : skipped ? '平台已有这条固件，未重复上传' : '固件上传完成'
   const meta = [fileName, size].filter(Boolean).join(' · ')
   return createElement('div', { className: 'oh-xts__panel', 'aria-live': 'polite' },
     createElement('div', { className: 'oh-xts__panel-head' },
@@ -620,7 +621,7 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
         createElement('button', { type: 'button', className: 'oh-xts__btn', onClick: props.onCheckMirror, disabled: busy }, '校验固件'),
         createElement('button', { type: 'button', className: 'oh-xts__btn oh-xts__btn--primary', onClick: props.onUploadMirror, disabled: busy }, busy ? '上传中…' : '上传固件'),
       ),
-      createElement('p', { className: 'oh-xts__note' }, '评测资料预检通过后会自动开始上传固件；只上传文件，不删改任何镜像。'),
+      createElement('p', { className: 'oh-xts__note' }, '评测资料预检通过后会自动开始上传固件；平台已有同名固件时自动跳过；只上传文件，不删改任何镜像。'),
       mirrorPanel(operationKind, mirrorInfo, percent, stage, detail, phase, summaryState?.ok === true ? true : summaryState?.ok === false ? false : undefined, busy),
     ),
 

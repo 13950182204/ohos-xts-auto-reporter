@@ -138,6 +138,23 @@ export class WorkbookValidationError extends Error {
   }
 }
 
+/**
+ * 把安全补丁标签统一成平台展示/回传的 `YYYY/MM/DD`。
+ * 平台第 3 步回读是 `2026/11/01` 这种带前导零的斜杠格式，工作簿里手填的
+ * `2026-11-1`、`2026.11.01`、`20261101` 都归一到这里，避免「安全补丁标签」被误判成不一致。
+ */
+export function normalizePatchDate(value) {
+  const text = normalizeText(value);
+  if (!text) return '';
+  const separated = /^(\d{4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})\s*日?$/.exec(text);
+  if (separated) {
+    return `${separated[1]}/${separated[2].padStart(2, '0')}/${separated[3].padStart(2, '0')}`;
+  }
+  const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(text);
+  if (compact) return `${compact[1]}/${compact[2]}/${compact[3]}`;
+  return text;
+}
+
 export function normalizeText(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
@@ -562,7 +579,7 @@ export function recordToValues(record) {
     publicity: record.publicity,
     publicizeDate: record.publicizeDate,
     softwareVersion: record.softwareVersion,
-    securityPatch: record.securityPatch,
+    securityPatch: normalizePatchDate(record.securityPatch),
   };
   if (record.type === 'release') {
     for (const [index, device] of record.devices.entries()) {
@@ -1117,7 +1134,7 @@ export function expectedSoftwareValues(record) {
   const devices = record.type === 'release' ? record.devices : [record];
   return {
     softwareVersion: record.softwareVersion,
-    securityPatch: record.securityPatch,
+    securityPatch: normalizePatchDate(record.securityPatch),
     versionIds: devices.map((device) => device.versionId),
     versionHashes: devices.map((device) => device.versionHash),
     pcidScPaths: devices.map((device) => device.pcidScPath).filter(Boolean),
