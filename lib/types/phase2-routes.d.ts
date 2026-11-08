@@ -38,6 +38,34 @@ export interface WaiverScanResult {
     items: WaiverScanItem[];
     summary: WaiverScanSummary;
 }
+export interface Phase2DraftItem {
+    directory?: string;
+    workbookPath?: string;
+    name?: string;
+    sheetName?: string;
+    type?: string;
+    assessmentNumber?: string;
+    applicationId?: string;
+    processingStatus?: string;
+    processedAt?: string;
+    notes?: string;
+    resumable?: boolean;
+}
+export interface Phase2DraftsResult {
+    ok: boolean;
+    root?: string;
+    items?: Phase2DraftItem[];
+    skipped?: Array<{
+        workbookPath?: string;
+        name?: string;
+        detail?: string;
+    }>;
+    summary?: {
+        total?: number;
+        skipped?: number;
+    };
+    error?: string;
+}
 export declare function registerPhase2Routes(ctx: Context, settings: Phase2SettingsPlane): void;
 /** 存储与迁移路径可由调用方注入（profile 配置覆盖 / 测试隔离，避免误读真实 home）。 */
 export interface Phase2SettingsOptions {

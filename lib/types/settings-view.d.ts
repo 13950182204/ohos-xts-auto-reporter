@@ -86,6 +86,36 @@ export type WaiverScan = {
     error?: string;
     message?: string;
 };
+/** 未提交草稿：宿主读工作簿状态得到，用来提示「哪条申请还能接着提交」。 */
+export type Phase2DraftItem = {
+    directory?: string;
+    workbookPath?: string;
+    name?: string;
+    sheetName?: string;
+    type?: string;
+    assessmentNumber?: string;
+    applicationId?: string;
+    processingStatus?: string;
+    processedAt?: string;
+    notes?: string;
+    resumable?: boolean;
+};
+export type Phase2Drafts = {
+    ok: boolean;
+    root?: string;
+    items?: Phase2DraftItem[];
+    skipped?: Array<{
+        workbookPath?: string;
+        name?: string;
+        detail?: string;
+    }>;
+    summary?: {
+        total?: number;
+        skipped?: number;
+    };
+    error?: string;
+    message?: string;
+};
 export type SettingsCardProps = {
     values: SettingsFormValues;
     hasPassword: boolean;
@@ -95,6 +125,9 @@ export type SettingsCardProps = {
     result: ResponseState | null;
     state: Record<string, unknown> | undefined;
     scan: WaiverScan | null;
+    /** 未提交草稿：只读工作簿状态，空数组表示这个目录下没有可续提交的申请。 */
+    drafts?: Phase2Drafts | null;
+    draftsLoading?: boolean;
     /** 按 Excel 路径推导出的默认路径（只用于提示与回填，不触发动作）。 */
     derived?: DerivePathsResult | null;
     deriving?: boolean;
@@ -105,6 +138,7 @@ export type SettingsCardProps = {
     onWaiverPreflight: () => void;
     onSaveWaiverDraft: () => void;
     onScan: () => void;
+    onRefreshDrafts: () => void;
     onCheckMirror: () => void;
     onUploadMirror: () => void;
 };

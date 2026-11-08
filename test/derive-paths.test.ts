@@ -339,6 +339,7 @@ describe('paths/derive 路由', () => {
       '/api/ohos-xts-auto-reporter/waiver/scan',
       '/api/ohos-xts-auto-reporter/mirror/upload',
       DERIVE_URL,
+      '/api/ohos-xts-auto-reporter/phase2/drafts',
     ])
     expect(routes.every((route) => route.kind === 'exact')).toBe(true)
     expect(typeof deriveRoute().handler).toBe('function')

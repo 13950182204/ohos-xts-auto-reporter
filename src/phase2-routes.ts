@@ -611,6 +611,61 @@ function parseWaiverScan(output: string): { ok: boolean; root?: string; items?: 
  * 按目录结构解析出测试套分类、模块、套件、附件与平台提交路径，供设置页「识别」按钮预览。
  * 失败统一 HTTP 200 + `{ ok:false, error }`，方便前端统一处理。
  */
+/** 草稿提示：只读工作簿状态，用来告诉用户「哪条申请还能继续提交」。 */
+const PHASE2_DRAFTS_PREFIX = 'PHASE2_DRAFTS_JSON='
+
+export interface Phase2DraftItem {
+  directory?: string
+  workbookPath?: string
+  name?: string
+  sheetName?: string
+  type?: string
+  assessmentNumber?: string
+  applicationId?: string
+  processingStatus?: string
+  processedAt?: string
+  notes?: string
+  resumable?: boolean
+}
+
+export interface Phase2DraftsResult {
+  ok: boolean
+  root?: string
+  items?: Phase2DraftItem[]
+  skipped?: Array<{ workbookPath?: string; name?: string; detail?: string }>
+  summary?: { total?: number; skipped?: number }
+  error?: string
+}
+
+function parsePhase2Drafts(output: string): Phase2DraftsResult | undefined {
+  for (const line of output.split(/\r?\n/).reverse()) {
+    const parsed = parseStructuredLine<Phase2DraftsResult>(line, PHASE2_DRAFTS_PREFIX)
+    if (parsed) return parsed
+  }
+  return undefined
+}
+
+async function handlePhase2Drafts(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsPlane): Promise<void> {
+  if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: '只支持 POST。' })
+  try {
+    const body = await readBody(req)
+    const workbookPath = text(body.workbookPath) || text(currentSettings(settings).workbookPath)
+    if (!workbookPath) return sendJson(res, 200, { ok: false, error: '没有填写设备目录，无法检查草稿。' })
+    if (!existsSync(workbookPath)) return sendJson(res, 200, { ok: false, error: `设备目录不存在：${workbookPath}` })
+    const result = await runScript('list_phase2_drafts.mjs', ['--input', workbookPath], {}, [])
+    const parsed = parsePhase2Drafts(result.output)
+    if (!parsed) {
+      const detail = result.output ? `无法解析草稿检查结果：${result.output.slice(-500)}` : '草稿检查进程未返回结果。'
+      return sendJson(res, 200, { ok: false, error: detail })
+    }
+    if (parsed.ok === false) return sendJson(res, 200, { ok: false, error: parsed.error || '检查草稿失败。' })
+    sendJson(res, 200, { ok: true, root: parsed.root, items: parsed.items ?? [], skipped: parsed.skipped ?? [], summary: parsed.summary })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    sendJson(res, 200, { ok: false, error: `检查草稿失败：${message}` })
+  }
+}
+
 async function handleWaiverScan(req: IncomingMessage, res: ServerResponse, settings: Phase2SettingsPlane): Promise<void> {
   if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error: '只支持 POST。' })
   try {
@@ -861,6 +916,7 @@ export function registerPhase2Routes(ctx: Context, settings: Phase2SettingsPlane
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/mirror/upload', handler: (req, res) => handleMirrorUpload(req, res, settings) },
     // 路径推导只依赖请求体里的那一行输入，不需要设置数据面。
     { kind: 'exact', path: '/api/ohos-xts-auto-reporter/paths/derive', handler: (req, res) => handlePathsDerive(req, res) },
+    { kind: 'exact', path: '/api/ohos-xts-auto-reporter/phase2/drafts', handler: (req, res) => handlePhase2Drafts(req, res, settings) },
   ]
   // `/settings` 同时服务 GET（读）与 POST（写）：WebRoute 的 exact 只按路径分发，
   // 方法判定在各 handler 内部完成。

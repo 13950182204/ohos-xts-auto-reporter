@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
   SettingsCardView,
   type DerivePathsResult,
+  type Phase2Drafts,
   type ResponseState,
   type SettingsFormValues,
   type SettingsView,
@@ -90,6 +91,8 @@ export function ReporterSettingsCard() {
   const [result, setResult] = useState<ResponseState | null>(null)
   const [hostState, setHostState] = useState<ResponseState | null>(null)
   const [scan, setScan] = useState<WaiverScan | null>(null)
+  const [drafts, setDrafts] = useState<Phase2Drafts | null>(null)
+  const [draftsLoading, setDraftsLoading] = useState(false)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   // 路径推导：只做「填 Excel → 带出其它路径」，绝不自动触发任何提交动作。
   const [derived, setDerived] = useState<DerivePathsResult | null>(null)
@@ -172,6 +175,19 @@ export function ReporterSettingsCard() {
     return () => { active = false; window.clearTimeout(timer) }
   }, [values.workbookPath, settingsLoaded])
 
+  // 目录一变就重新检查草稿（同样防抖，避免每敲一个字都去读工作簿）。
+  useEffect(() => {
+    if (!settingsLoaded) return
+    const input = values.workbookPath.trim()
+    if (!input) {
+      setDrafts(null)
+      return
+    }
+    let active = true
+    const timer = window.setTimeout(() => { if (active) void loadDrafts() }, 700)
+    return () => { active = false; window.clearTimeout(timer) }
+  }, [values.workbookPath, settingsLoaded])
+
   function onChange(field: keyof SettingsFormValues, value: string): void {
     setValues((previous) => ({ ...previous, [field]: value }))
   }
@@ -207,12 +223,29 @@ export function ReporterSettingsCard() {
     setScanning(false)
   }
 
+  /**
+   * 未提交草稿提示：只读工作簿状态（不登录平台），所以随时可以刷新；
+   * 提交/预检结束后也顺手刷新，让「能不能续提交」始终是最新的。
+   */
+  async function loadDrafts(): Promise<void> {
+    const workbookPath = values.workbookPath.trim()
+    if (!workbookPath) {
+      setDrafts(null)
+      return
+    }
+    setDraftsLoading(true)
+    const response = await request<Phase2Drafts>('phase2/drafts', 'POST', { workbookPath })
+    setDrafts(response)
+    setDraftsLoading(false)
+  }
+
   async function runMirror(dryRun: boolean): Promise<void> {
     setBusy(true)
     setResult(null)
     const saved = await saveSettings()
     if (saved) setResult(await request<ResponseState>('mirror/upload', 'POST', { mirrorPath: values.mirrorPath.trim(), dryRun }))
     setBusy(false)
+    void loadDrafts()
   }
 
   /**
@@ -235,6 +268,7 @@ export function ReporterSettingsCard() {
       setResult(preflight)
     }
     setBusy(false)
+    void loadDrafts()
   }
 
   async function run(action: 'save' | 'waiver/preflight' | 'waiver/save', body: Record<string, unknown>): Promise<void> {
@@ -243,6 +277,7 @@ export function ReporterSettingsCard() {
     const saved = await saveSettings()
     if (saved) setResult(await request<ResponseState>(action, 'POST', body))
     setBusy(false)
+    void loadDrafts()
   }
 
   // 固件上传是长任务：Host 立即返回「已开始」，真正的忙闲状态由 /status 的 phase 决定，
@@ -260,6 +295,8 @@ export function ReporterSettingsCard() {
     result,
     state: hostState?.state,
     scan,
+    drafts,
+    draftsLoading,
     derived,
     deriving,
     deriveError,
@@ -279,6 +316,7 @@ export function ReporterSettingsCard() {
       })
     },
     onScan: () => { void runScan() },
+    onRefreshDrafts: () => { void loadDrafts() },
     onCheckMirror: () => { void runMirror(true) },
     onUploadMirror: () => { void runMirror(false) },
   })

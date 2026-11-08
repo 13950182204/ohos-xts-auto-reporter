@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { newestMtimeMs, packDirectoryToZip } from './report_archive.mjs';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_WORKBOOK_PATH = 'D:\\ohos\\XTS6.1\\OpenHarmony兼容性申请资料.xlsx';
@@ -308,6 +309,27 @@ async function pickReportZipPath(directory, joinPath) {
  * 自检表与 XTS 报告也按「工作簿所在目录」自动定位：优先精确文件名，
  * 找不到时退化为目录扫描（自检表按 6.x > 5.x、mtime 新者优先；报告优先 report/ 下的 zip）。
  */
+/**
+ * report/ 目录是解压后的产物时，平台只收 zip：这里在预检前把目录打成
+ * report/report.zip。已存在且比目录内任何文件都新时不重复打包（省时间）；
+ * 目录里有更新（重新跑了测试）就覆盖重建，避免上传旧包。
+ */
+async function ensureReportArchive(directory, joinPath) {
+  const reportDir = toHostPath(joinPath(directory, 'report'));
+  const dirStat = await fs.stat(reportDir).catch(() => null);
+  if (!dirStat?.isDirectory()) return '';
+  const zipPath = joinPath(directory, 'report', PHASE2_REPORT_NAME);
+  const zipStat = await fs.stat(toHostPath(zipPath)).catch(() => null);
+  // 目录里已经有 zip（人工整理好的包）就不要再套一层 zip，交给 pickReportZipPath 去挑。
+  const names = await fs.readdir(reportDir).catch(() => []);
+  if (names.some((name) => /\.zip$/i.test(name))) return '';
+  const newest = await newestMtimeMs(reportDir, { ignore: new Set([path.resolve(toHostPath(zipPath))]) });
+  if (zipStat?.isFile() && zipStat.mtimeMs >= newest) return toHostPath(zipPath);
+  if (!newest) return zipStat?.isFile() ? toHostPath(zipPath) : '';
+  await packDirectoryToZip(reportDir, toHostPath(zipPath));
+  return toHostPath(zipPath);
+}
+
 export async function derivePhase2AttachmentPaths(workbookPath) {
   const input = normalizeText(workbookPath);
   const windows = /^([a-zA-Z]:[\\/])/.test(input);
@@ -315,6 +337,7 @@ export async function derivePhase2AttachmentPaths(workbookPath) {
   const directory = windows
     ? path.win32.dirname(input.replaceAll('/', '\\'))
     : path.dirname(toHostPath(input));
+  await ensureReportArchive(directory, joinPath);
   const exactSelfCheck = joinPath(directory, PHASE2_SELF_CHECK_NAME);
   const exactReport = joinPath(directory, 'report', PHASE2_REPORT_NAME);
   const selfCheckPath = await fileExistsAt(exactSelfCheck)

@@ -91,6 +91,31 @@ export type WaiverScan = {
   message?: string
 }
 
+/** 未提交草稿：宿主读工作簿状态得到，用来提示「哪条申请还能接着提交」。 */
+export type Phase2DraftItem = {
+  directory?: string
+  workbookPath?: string
+  name?: string
+  sheetName?: string
+  type?: string
+  assessmentNumber?: string
+  applicationId?: string
+  processingStatus?: string
+  processedAt?: string
+  notes?: string
+  resumable?: boolean
+}
+
+export type Phase2Drafts = {
+  ok: boolean
+  root?: string
+  items?: Phase2DraftItem[]
+  skipped?: Array<{ workbookPath?: string; name?: string; detail?: string }>
+  summary?: { total?: number; skipped?: number }
+  error?: string
+  message?: string
+}
+
 export type SettingsCardProps = {
   values: SettingsFormValues
   hasPassword: boolean
@@ -100,6 +125,9 @@ export type SettingsCardProps = {
   result: ResponseState | null
   state: Record<string, unknown> | undefined
   scan: WaiverScan | null
+  /** 未提交草稿：只读工作簿状态，空数组表示这个目录下没有可续提交的申请。 */
+  drafts?: Phase2Drafts | null
+  draftsLoading?: boolean
   /** 按 Excel 路径推导出的默认路径（只用于提示与回填，不触发动作）。 */
   derived?: DerivePathsResult | null
   deriving?: boolean
@@ -110,6 +138,7 @@ export type SettingsCardProps = {
   onWaiverPreflight: () => void
   onSaveWaiverDraft: () => void
   onScan: () => void
+  onRefreshDrafts: () => void
   onCheckMirror: () => void
   onUploadMirror: () => void
 }
@@ -160,6 +189,7 @@ const TOKENS = `
 .oh-xts__chip--acts{color:var(--oh-business)}
 .oh-xts__chip--validator{color:var(--oh-success)}
 .oh-xts__chip--reserved{color:var(--oh-warn)}
+.oh-xts__chip--pending{color:var(--oh-warn);border-color:var(--oh-warn)}
 .oh-xts__chip--blocked{color:var(--oh-danger)}
 .oh-xts__chip--neutral{color:var(--oh-text-2)}
 .oh-xts__progress-top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;font-size:11.5px;color:var(--oh-text-2)}
@@ -271,6 +301,33 @@ function scanSummaryMeta(summary: WaiverScanSummary | undefined, items: WaiverSc
   const blocked = num(summary?.blocked) ?? items.filter((item) => item.ready === false).length
   if (blocked > 0) parts.push(`待修复 ${blocked}`)
   return parts.join(' · ')
+}
+
+function draftPanel(drafts: Phase2Drafts): ReactElement {
+  const items = asArray(drafts.items) as Phase2DraftItem[]
+  const skipped = asArray(drafts.skipped) as Array<{ workbookPath?: string; name?: string; detail?: string }>
+  const rows = items.map((item) => createElement('div', { className: 'oh-xts__row', key: `draft-${item.applicationId || item.workbookPath || item.name}` },
+    createElement('div', { className: 'oh-xts__row-top' },
+      chip(item.assessmentNumber ? '未提交' : '编号待回写', item.assessmentNumber ? 'pending' : 'neutral'),
+      createElement('span', { className: 'oh-xts__name' }, str(item.name) || '未命名申请'),
+      createElement('span', { className: 'oh-xts__muted' }, str(item.processingStatus) || '待处理'),
+    ),
+    createElement('p', { className: 'oh-xts__path' },
+      `${item.assessmentNumber ? `测评编号：${item.assessmentNumber}` : '测评编号：待回写'}${item.processedAt ? ` · ${item.processedAt}` : ''}${item.notes ? ` · ${item.notes}` : ''}`),
+  ))
+  const skippedRows = skipped.map((item) => createElement('p', { className: 'oh-xts__path', key: `skip-${item.workbookPath || item.name}` },
+    `跳过：${str(item.name) || str(item.workbookPath)}（${str(item.detail) || '未知原因'}）`))
+  return createElement('div', { className: 'oh-xts__panel' },
+    createElement('div', { className: 'oh-xts__panel-head' },
+      createElement('span', { className: 'oh-xts__panel-title' }, '未提交草稿'),
+      createElement('span', { className: 'oh-xts__panel-meta' },
+        `${items.filter((item) => item.resumable).length} 条可直接续提交`),
+    ),
+    items.length ? createElement('div', { className: 'oh-xts__list' }, rows)
+      : createElement('p', { className: 'oh-xts__empty' }, '这个目录下没有创建过平台申请的草稿。'),
+    skippedRows.length ? createElement('div', { className: 'oh-xts__list' }, skippedRows) : null,
+    items.length ? createElement('p', { className: 'oh-xts__note' }, '点「评测资料提交」会继续这条申请，不会重新建一条。') : null,
+  )
 }
 
 function scanPanel(scan: WaiverScan): ReactElement {
@@ -534,7 +591,14 @@ export function SettingsCardView(props: SettingsCardProps): ReactElement {
       createElement('div', { className: 'oh-xts__actions' },
         createElement('button', { type: 'button', className: 'oh-xts__btn', onClick: props.onPreflight, disabled: busy }, '评测资料预检'),
         createElement('button', { type: 'button', className: 'oh-xts__btn oh-xts__btn--primary', onClick: props.onSaveReport, disabled: busy }, '评测资料提交'),
+        createElement('button', { type: 'button', className: 'oh-xts__btn', onClick: props.onRefreshDrafts, disabled: busy || props.draftsLoading }, props.draftsLoading ? '检查中…' : '刷新草稿'),
       ),
+      props.drafts?.ok === false
+        ? createElement('p', { className: 'oh-xts__status oh-xts__status--error' }, `草稿检查失败：${str(props.drafts.message) || str(props.drafts.error) || '未知原因'}`)
+        : props.drafts
+          ? draftPanel(props.drafts)
+          : createElement('p', { className: 'oh-xts__empty' },
+            props.draftsLoading ? '正在检查未提交草稿…' : '填好设备目录后会自动检查有没有未提交的草稿。'),
     ),
 
     createElement('hr', { className: 'oh-xts__rule' }),
