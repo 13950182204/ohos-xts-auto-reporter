@@ -276,14 +276,14 @@ async function rawPlatformRequest(page, endpoint, options = {}) {
  * 评测资料提交前的准入考试：平台要求「考过才能提交」，每人 24 小时一次、必须全对。
  * canExam=false 时无法区分「今天已考过」与「被限制」，按已考过处理（真被限制时后续提交会自己报错）。
  */
-async function ensureExamPassed(page, record) {
+async function ensureExamPassed(page, record, { allowStart = true } = {}) {
   const phone = String(process.env.OH_CONTACT_PHONE || record?.contactPhone || '').trim();
   const email = String(process.env.OH_EXAM_EMAIL || process.env.OH_USERNAME || '').trim();
   const bank = loadExamBank();
   const index = buildExamIndex(bank);
   reportProgress(52, '检查考试状态', `按 ${phone || '未填手机号'} / ${email || '未填邮箱'} 查询平台考试资格。`);
   const query = `?phone=${encodeURIComponent(phone)}&email=${encodeURIComponent(email)}`;
-  const statusRaw = await rawPlatformRequest(page, `/certification/exam/checkStatus${query}`, { method: 'GET' });
+  const statusRaw = await rawPlatformRequest(page, `/exam/checkStatus${query}`, { method: 'GET' });
   const status = parseExamStatus(statusRaw.payload);
   if (!status.ok) {
     throw new ApplicationError('EXAM_STATUS_FAILED', `查询考试状态失败：${status.message || `HTTP ${statusRaw.status}`}`, { retryable: true });
@@ -292,9 +292,13 @@ async function ensureExamPassed(page, record) {
     reportProgress(54, '跳过考试', `平台显示当前不能考试（上次：${status.lastExamTime || '无记录'}），按已考过继续。`);
     return { attempted: false, canExam: false, lastExamTime: status.lastExamTime };
   }
+  if (!allowStart) {
+    reportProgress(54, '考试待做', '预检模式不消耗考试名额，真正提交时会先作答。');
+    return { attempted: false, canExam: true, skippedByMode: true };
+  }
 
   reportProgress(52, '开始考试', '平台要求先通过准入考试，正在按题库自动作答。');
-  const startRaw = await rawPlatformRequest(page, '/certification/exam/start', {
+  const startRaw = await rawPlatformRequest(page, '/exam/start', {
     method: 'POST',
     data: { phone, email },
   });
@@ -315,7 +319,7 @@ async function ensureExamPassed(page, record) {
     if (!answerKey) {
       throw new ApplicationError('EXAM_ANSWER_UNKNOWN', `第 ${answered + 1} 题在题库里没有答案：${String(question.content || '').slice(0, 40)}`);
     }
-    const answerRaw = await rawPlatformRequest(page, '/certification/exam/answer', {
+    const answerRaw = await rawPlatformRequest(page, '/exam/answer', {
       method: 'POST',
       data: { questionId: question.id, userAnswer: answerKey },
     });
@@ -1056,6 +1060,9 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
   if (!process.env.OH_WORKBOOK_PATH) {
     process.env.OH_WORKBOOK_PATH = workbookPath || record.sourcePath || '';
   }
+  // 平台的考试闸门出现在第 1 步点「下一步」时（联系人 → 产品定义），
+  // 所以必须在创建/推进申请之前就把考试做完。
+  const exam = await ensureExamPassed(page, record, { allowStart: mode !== 'dry-run' });
   const applicationId = await applicationIdForRecord(page, artifacts, record, mode, workbookPath);
   const resolved = await resolveRecordOptions(page, record);
   if (!applicationId) {
@@ -1114,6 +1121,7 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
         status: 'skipped',
         applicationId,
         action: 'none',
+        exam,
         ...(express ? { express } : {}),
       };
     }
@@ -1121,7 +1129,6 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
       reportProgress(55, '保存软件定义', '正在保存软件版本、补丁和 PCID.sc。');
       await saveSoftwareStep(page, applicationId, resolved, { advanceToReport: true });
     }
-    const exam = await ensureExamPassed(page, resolved);
     const attachments = await saveAndVerifyPhase2Attachments(page, applicationId, resolved);
     const express = await saveExpressStep(page, applicationId, resolved);
     return {
@@ -1141,7 +1148,6 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
   // The platform creates the report relation only when the software definition advances to report upload.
   reportProgress(55, '保存软件定义', '正在保存软件版本、补丁和 PCID.sc。');
   await saveSoftwareStep(page, applicationId, resolved, { advanceToReport: true });
-  const exam = await ensureExamPassed(page, resolved);
   const attachments = await saveAndVerifyPhase2Attachments(page, applicationId, resolved);
   current = await getApplication(page, applicationId);
   const differences = softwareDifferences(current, resolved);

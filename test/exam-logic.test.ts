@@ -203,3 +203,27 @@ describe('platform payload parsing', () => {
     expect(parsed.nextQuestion.options).toEqual(JUDGE_OPTIONS)
   })
 })
+
+describe('platform endpoint wiring', () => {
+  // 平台 axios 的 baseURL 已含 /certificate，platformUrl() 又会补一次前缀；
+  // 这里用源码断言防止再写成 /certification/exam/... 造成 404。
+  const source = readFileSync(fileURLToPath(new URL('../scripts/fill_phase2.mjs', import.meta.url)), 'utf8')
+
+  it('calls exam endpoints without the extra /certification prefix', () => {
+    expect(source).toContain("`/exam/checkStatus")
+    expect(source).toContain("'/exam/start'")
+    expect(source).toContain("'/exam/answer'")
+    expect(source).not.toContain("'/certification/exam/")
+  })
+
+  it('takes the exam before creating or advancing the application', () => {
+    // 平台的考试闸门在第 1 步点「下一步」（联系人 → 产品定义）时就出现，
+    // 所以考试必须在 applicationIdForRecord 之前完成。
+    const examCall = source.indexOf('ensureExamPassed(page, record')
+    const createCall = source.indexOf('applicationIdForRecord(page, artifacts, record')
+    const uploadCall = source.indexOf('saveAndVerifyPhase2Attachments(page, applicationId, resolved)')
+    expect(examCall).toBeGreaterThan(-1)
+    expect(createCall).toBeGreaterThan(examCall)
+    expect(uploadCall).toBeGreaterThan(examCall)
+  })
+})
