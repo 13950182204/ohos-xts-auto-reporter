@@ -1,0 +1,1290 @@
+[
+  {
+    "n": 1,
+    "type": "选择题",
+    "question": "小李投递样机时，外观图是在办公室随手拍的，背景是灰色墙面。被驳回。外观图背景到底要怎样？",
+    "options": [
+      {
+        "key": "A",
+        "text": "浅色背景就行，不要太暗"
+      },
+      {
+        "key": "B",
+        "text": "必须纯白背景，或者抠图无背景"
+      },
+      {
+        "key": "C",
+        "text": "随便什么背景，清楚就行"
+      },
+      {
+        "key": "D",
+        "text": "要用专业摄影棚拍"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "必须纯白背景，或者抠图无背景",
+    "analysis": "B. 必须纯白背景，或者抠图无背景"
+  },
+  {
+    "n": 2,
+    "type": "判断题",
+    "question": "外观图背景浅色就行，不一定要纯白。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "外观图背景，要求：纯白（或者抠图无背景）"
+  },
+  {
+    "n": 3,
+    "type": "选择题",
+    "question": "提交商用设备测评后发现：平台填的传播名是「AAA智能批发商」，但设备实际返回的是「LXSYY」，XTS 报告里也是「LXSYY」。会怎样？",
+    "options": [
+      {
+        "key": "A",
+        "text": "没关系，意思一样就行"
+      },
+      {
+        "key": "B",
+        "text": "会被驳回，三处必须一致"
+      },
+      {
+        "key": "C",
+        "text": "改设备接口的返回值就行"
+      },
+      {
+        "key": "D",
+        "text": "改 XTS 报告就行"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "会被驳回，三处必须一致",
+    "analysis": "B. 会被驳回，三处必须一致"
+  },
+  {
+    "n": 4,
+    "type": "判断题",
+    "question": "软件版本号写「OpenHarmony 6.1.0.31」没问题。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "软件版本号GetDisplayVersion()接口获取的返回值不应包含操作系统相关信息"
+  },
+  {
+    "n": 5,
+    "type": "判断题",
+    "question": "平台填的信息和设备实际返回的值，大小写不一样也没关系。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "平台填的信息和设备实际返回的值，需要完全一致，包括大小写。"
+  },
+  {
+    "n": 6,
+    "type": "判断题",
+    "question": "设备不带屏，但 PCS 里屏幕那项填 Y 也行。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "送测设备应与PCS的相关填写情况相符"
+  },
+  {
+    "n": 7,
+    "type": "选择题",
+    "question": "软件版本号填了「OpenHarmony 6.1.0.31」，被驳回了。为什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "版本号太长了"
+      },
+      {
+        "key": "B",
+        "text": "用户可见的软件版本号，是整个系统的软件版本号而非OpenHarmony版本号，不能带「OpenHarmony」字样。"
+      },
+      {
+        "key": "C",
+        "text": "版本号格式不对"
+      },
+      {
+        "key": "D",
+        "text": "应该填中文"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "用户可见的软件版本号，是整个系统的软件版本号而非OpenHarmony版本号，不能带「OpenHarmony」字样。",
+    "analysis": "B. 用户可见的软件版本号，是整个系统的软件版本号而非OpenHarmony版本号，不能带「OpenHarmony」字样。"
+  },
+  {
+    "n": 8,
+    "type": "判断题",
+    "question": "操作系统版本号可以根据产品自己改。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "操作系统版本号需使用默认值，不应手动修改。"
+  },
+  {
+    "n": 9,
+    "type": "判断题",
+    "question": "快递清单里的传播名、芯片型号，要和平台填的完全一致，包括大小写。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "快递清单里的传播名、芯片型号，要和平台填的完全一致，包括大小写。"
+  },
+  {
+    "n": 10,
+    "type": "选择题",
+    "question": "厂家通过开源鸿蒙兼容性测评，产品传播表达不规范描述的有？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Powered by OpenHarmony"
+      },
+      {
+        "key": "B",
+        "text": "该产品基于开源鸿蒙操作系统"
+      },
+      {
+        "key": "C",
+        "text": "该产品通过开源鸿蒙兼容性测评"
+      },
+      {
+        "key": "D",
+        "text": "开源鸿蒙产品"
+      }
+    ],
+    "answerKey": "D",
+    "answerText": "开源鸿蒙产品",
+    "analysis": "D. 开源鸿蒙产品"
+  },
+  {
+    "n": 11,
+    "type": "判断题",
+    "question": "外观图拍得好看就行，和实际投递的样机长得不一样也没事。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "外观图与实际投递的样机需保持一致。"
+  },
+  {
+    "n": 12,
+    "type": "选择题",
+    "question": "小张提交的 XTS 报告里有个模块显示 Unavailable，直接提交了，结果被驳回。应该怎么处理？",
+    "options": [
+      {
+        "key": "A",
+        "text": "Unavailable 的模块可以直接提交"
+      },
+      {
+        "key": "B",
+        "text": "提供测试通过的可视化报告日志或申请豁免。"
+      },
+      {
+        "key": "C",
+        "text": "把 Unavailable 改成 Pass 就行"
+      },
+      {
+        "key": "D",
+        "text": "删掉这个模块的记录"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "提供测试通过的可视化报告日志或申请豁免。",
+    "analysis": "B. 提供测试通过的可视化报告日志或申请豁免。"
+  },
+  {
+    "n": 13,
+    "type": "判断题",
+    "question": "自己编译的测试套件可以改改用例。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "不应修改用例"
+  },
+  {
+    "n": 14,
+    "type": "选择题",
+    "question": "小李给他参加测评的产品提交了豁免申请，但有些用例其实测试已经通过了。被驳回，问题在哪？",
+    "options": [
+      {
+        "key": "A",
+        "text": "测试通过的用例不能申请豁免，豁免要和实际结果对得上"
+      },
+      {
+        "key": "B",
+        "text": "豁免申请可以随便填"
+      },
+      {
+        "key": "C",
+        "text": "应该把通过的改成失败"
+      },
+      {
+        "key": "D",
+        "text": "所有用例都要申请豁免"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "测试通过的用例不能申请豁免，豁免要和实际结果对得上",
+    "analysis": "A. 测试通过的用例不能申请豁免，豁免要和实际结果对得上"
+  },
+  {
+    "n": 15,
+    "type": "判断题",
+    "question": "测试已经通过的用例也能申请豁免。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "测试已经通过的用例不应申请豁免，会造成测试结果与提交的豁免不符。"
+  },
+  {
+    "n": 16,
+    "type": "选择题",
+    "question": "某厂家在商用设备测评中，外观图为了看起来好看拉伸了图片，被驳回，为什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "外观图不够清晰"
+      },
+      {
+        "key": "B",
+        "text": "图片和设备实物看起来不符"
+      },
+      {
+        "key": "C",
+        "text": "图片太大了"
+      },
+      {
+        "key": "D",
+        "text": "缺少多角度图片"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "图片和设备实物看起来不符",
+    "analysis": "B. 图片和设备实物看起来不符"
+  },
+  {
+    "n": 17,
+    "type": "选择题",
+    "question": "快递物品清单里，传播名和平台填的不一样，芯片型号大小写也对不上，被驳回。清单信息该怎么填？",
+    "options": [
+      {
+        "key": "A",
+        "text": "大概对就行，不用完全一致"
+      },
+      {
+        "key": "B",
+        "text": "传播名、芯片型号（含大小写）、企业全称都要和平台信息一致"
+      },
+      {
+        "key": "C",
+        "text": "只需传播名一致"
+      },
+      {
+        "key": "D",
+        "text": "清单信息不影响测评"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "传播名、芯片型号（含大小写）、企业全称都要和平台信息一致",
+    "analysis": "B. 传播名、芯片型号（含大小写）、企业全称都要和平台信息一致"
+  },
+  {
+    "n": 18,
+    "type": "判断题",
+    "question": "发了证书之后想撤销，投递的样机还能退回来。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "发放证书之后，实物要留档封存，不退回；因各种原因撤销证书，实物不退回。"
+  },
+  {
+    "n": 19,
+    "type": "选择题",
+    "question": "某厂家参与测评类型为模组/开发板时，样机只投递了 3 个，被驳回要求补寄。模组/开发板到底要投几个？",
+    "options": [
+      {
+        "key": "A",
+        "text": "≥2 个"
+      },
+      {
+        "key": "B",
+        "text": "≥3 个"
+      },
+      {
+        "key": "C",
+        "text": "≥5 个"
+      },
+      {
+        "key": "D",
+        "text": "≥10 个"
+      }
+    ],
+    "answerKey": "C",
+    "answerText": "≥5 个",
+    "analysis": "C. ≥5 个"
+  },
+  {
+    "n": 20,
+    "type": "判断题",
+    "question": "快递清单里配件可以和样机一起填写数量。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "快递清单中的数量为样机数量。"
+  },
+  {
+    "n": 21,
+    "type": "选择题",
+    "question": "小王参加测评时 PCS 自检表用了 5.0 版本轻量系统的，但系统实际是 6.1标准系统，被驳回。PCS 自检表应该用哪个版本？",
+    "options": [
+      {
+        "key": "A",
+        "text": "用最新的轻量系统的就行"
+      },
+      {
+        "key": "B",
+        "text": "要用和系统版本、系统类型都对应的 PCS 自检表"
+      },
+      {
+        "key": "C",
+        "text": "用哪个版本都行"
+      },
+      {
+        "key": "D",
+        "text": "用6.1版本的轻量系统就行"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "要用和系统版本、系统类型都对应的 PCS 自检表",
+    "analysis": "B. 要用和系统版本、系统类型都对应的 PCS 自检表"
+  },
+  {
+    "n": 22,
+    "type": "判断题",
+    "question": "PCS 里「安全」大项标了「强烈建议」，所以所有安全项都可以不满足。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "PCS 里「安全」大项标了「强烈建议」，所以所有安全项都可以不满足，但需在F列备注说明对应原因。"
+  },
+  {
+    "n": 23,
+    "type": "选择题",
+    "question": "某厂家的安全补丁标签，平台写的是「2025/5/1」，但设备返回的是「2025/05/01」，被驳回。这说明？",
+    "options": [
+      {
+        "key": "A",
+        "text": "差一个 0 没关系"
+      },
+      {
+        "key": "B",
+        "text": "设备返回值和平台填写的必须完全一致，格式统一用「YYYY/MM/DD」格式（如 2025/05/01）"
+      },
+      {
+        "key": "C",
+        "text": "以平台填的为准"
+      },
+      {
+        "key": "D",
+        "text": "以设备返回的为准"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "设备返回值和平台填写的必须完全一致，格式统一用「YYYY/MM/DD」格式（如 2025/05/01）",
+    "analysis": "B. 设备返回值和平台填写的必须完全一致，格式统一用「YYYY/MM/DD」格式（如 2025/05/01）"
+  },
+  {
+    "n": 24,
+    "type": "判断题",
+    "question": "标准系统带屏涉及分布式兼容性测试的产品，可以申请借用分布式测试盒子，费用为免费使用。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "标准系统带屏涉及分布式兼容性测试的产品，可以申请借用分布式测试盒子，费用为免费使用。"
+  },
+  {
+    "n": 25,
+    "type": "判断题",
+    "question": "不带屏的标准系统产品不涉及DCTS测试，无需提供DCTS测试报告，也无需申请DCTS豁免。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "不带屏的标准系统产品不涉及DCTS测试，无需提供DCTS测试报告，也无需申请DCTS豁免。"
+  },
+  {
+    "n": 26,
+    "type": "判断题",
+    "question": "不带屏的标准系统产品不涉及ACTS-Validator测试，无需提供ACTS-Validator测试报告，也无需申请ACTS-Validator豁免。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "不带屏的标准系统产品不涉及ACTS-Validator测试，无需提供ACTS-Validator测试报告，也无需申请ACTS-Validator豁免。"
+  },
+  {
+    "n": 27,
+    "type": "选择题",
+    "question": "某厂家投递了两台样机，但一台侧面有两个开孔，另一台只有一个，被驳回，说明什么？",
+    "options": [
+      {
+        "key": "A",
+        "text": "样机之间可以不一样"
+      },
+      {
+        "key": "B",
+        "text": "投递的多台样机之间必须保持一致（形态、接口、刻印等）"
+      },
+      {
+        "key": "C",
+        "text": "以第一台为准"
+      },
+      {
+        "key": "D",
+        "text": "没关系，能测试就行"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "投递的多台样机之间必须保持一致（形态、接口、刻印等）",
+    "analysis": "B. 投递的多台样机之间必须保持一致（形态、接口、刻印等）"
+  },
+  {
+    "n": 28,
+    "type": "判断题",
+    "question": "标准系统产品SSTS套件无需自行编译，从兼容性测试套件(XTS)页面获取即可。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "标准系统产品SSTS套件无需自行编译，从兼容性测试套件(XTS)页面获取即可。"
+  },
+  {
+    "n": 29,
+    "type": "选择题",
+    "question": "提交测评时没等豁免审批通过就提交了申请，这样做对吗？",
+    "options": [
+      {
+        "key": "A",
+        "text": "不对，必须等豁免通过才能提交"
+      },
+      {
+        "key": "B",
+        "text": "对，测评提交和豁免申请可以同时进行，不用等"
+      },
+      {
+        "key": "C",
+        "text": "要先提交豁免再提交测评"
+      },
+      {
+        "key": "D",
+        "text": "豁免和测评不能同时进行"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "对，测评提交和豁免申请可以同时进行，不用等",
+    "analysis": "B. 对，测评提交和豁免申请可以同时进行，不用等"
+  },
+  {
+    "n": 30,
+    "type": "判断题",
+    "question": "生态厂商想和测试评审人员沟通兼容性测评，可点击兼容性测评列表页的合作中心名称，获取联系信息。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "生态厂商想和测试评审人员沟通兼容性测评，可点击兼容性测评列表页的合作中心名称，获取联系信息。"
+  },
+  {
+    "n": 31,
+    "type": "判断题",
+    "question": "兼容性测评通过后，发放证书，并授权申请方在符合要求的产品及其包装、营销材料上按照规范使用兼容性标识。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "兼容性测评通过后，发放证书，并授权申请方在符合要求的产品及其包装、营销材料上按照规范使用兼容性标识。"
+  },
+  {
+    "n": 32,
+    "type": "选择题",
+    "question": "某厂家 PCS 自检表，某项规格要求为必须满足项，自检结果填了 Y，但 F 列备注写的是「设备不支持该功能」，这样做对吗？",
+    "options": [
+      {
+        "key": "A",
+        "text": "不对，Y 表示满足，但备注说「不支持」，逻辑矛盾，自检结果和备注必须相符"
+      },
+      {
+        "key": "B",
+        "text": "不对，F 列不用填备注"
+      },
+      {
+        "key": "C",
+        "text": "应该把 Y 改成 N"
+      },
+      {
+        "key": "D",
+        "text": "应该删掉这一行"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "不对，Y 表示满足，但备注说「不支持」，逻辑矛盾，自检结果和备注必须相符",
+    "analysis": "A. 不对，Y 表示满足，但备注说「不支持」，逻辑矛盾，自检结果和备注必须相符"
+  },
+  {
+    "n": 33,
+    "type": "判断题",
+    "question": "如果现场投递测评样机，测评中的快递单号可以填写测评编号。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "如果现场投递测评样机，测评中的快递单号可以填写测评编号。"
+  },
+  {
+    "n": 34,
+    "type": "选择题",
+    "question": "烧录指导文件写的是「A333 烧写方法」，但实际测评的开发板是 A537，烧录指导要怎样？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只要能烧录就行，型号不重要"
+      },
+      {
+        "key": "B",
+        "text": "烧录指导必须和实际测评的开发板型号对应"
+      },
+      {
+        "key": "C",
+        "text": "随便找个指导就行"
+      },
+      {
+        "key": "D",
+        "text": "不需要提供烧录指导"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "烧录指导必须和实际测评的开发板型号对应",
+    "analysis": "B. 烧录指导必须和实际测评的开发板型号对应"
+  },
+  {
+    "n": 35,
+    "type": "判断题",
+    "question": "商用设备测评样机投递后，无论是否发放证书，实物均会退回厂家。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "错误",
+    "analysis": "未发放证书之前，厂家可以提出撤销测评申请，在撤销申请审核通过后实物退回，运费到付。\n发放证书之后，实物要留档封存，不退回；因各种原因撤销证书，实物不退回。"
+  },
+  {
+    "n": 36,
+    "type": "选择题",
+    "question": "某厂家提交了多份不同的镜像文件，测评方不知道该烧录哪一份，镜像文件应该怎么提供？",
+    "options": [
+      {
+        "key": "A",
+        "text": "可以提供多份不同版本"
+      },
+      {
+        "key": "B",
+        "text": "提供一份可用的镜像，确保能烧录，如果涉及多份不同的要备注说明"
+      },
+      {
+        "key": "C",
+        "text": "镜像文件不用确保可以正常烧录"
+      },
+      {
+        "key": "D",
+        "text": "可以后补"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "提供一份可用的镜像，确保能烧录，如果涉及多份不同的要备注说明",
+    "analysis": "B. 提供一份可用的镜像，确保能烧录，如果涉及多份不同的要备注说明"
+  },
+  {
+    "n": 37,
+    "type": "判断题",
+    "question": "登录 OpenHarmony 兼容性平台查看公告中心，可以获取测评相关的最新消息。",
+    "options": [
+      {
+        "key": "A",
+        "text": "正确"
+      },
+      {
+        "key": "B",
+        "text": "错误"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "正确",
+    "analysis": "登录 OpenHarmony 兼容性平台查看公告中心，可以获取测评相关的最新消息。"
+  },
+  {
+    "n": 38,
+    "type": "选择题",
+    "question": "小李的PCS 自检表第一个 sheet 页不小心删了两行，第一个 sheet 页能改吗？",
+    "options": [
+      {
+        "key": "A",
+        "text": "可以随便增删改"
+      },
+      {
+        "key": "B",
+        "text": "第一个 sheet 页不能手动增删改"
+      },
+      {
+        "key": "C",
+        "text": "可以删但不能加"
+      },
+      {
+        "key": "D",
+        "text": "可以加但不能删"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "第一个 sheet 页不能手动增删改",
+    "analysis": "B. 第一个 sheet 页不能手动增删改"
+  },
+  {
+    "n": 39,
+    "type": "选择题",
+    "question": "小李不知道自己要测试的产品需不需要分布式测试盒子，请你告诉他哪些产品需要使用分布式测试盒子",
+    "options": [
+      {
+        "key": "A",
+        "text": "所有产品"
+      },
+      {
+        "key": "B",
+        "text": "标准系统带屏的产品"
+      },
+      {
+        "key": "C",
+        "text": "轻量系统产品"
+      },
+      {
+        "key": "D",
+        "text": "小型系统产品"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "标准系统带屏的产品",
+    "analysis": "B. 标准系统带屏的产品"
+  },
+  {
+    "n": 40,
+    "type": "选择题",
+    "question": "软件工具和烧录方法应如何提供？",
+    "options": [
+      {
+        "key": "A",
+        "text": "无需提供"
+      },
+      {
+        "key": "B",
+        "text": "在提交申请时和固件镜像一起打包上传至测评中，或者提供下载地址"
+      },
+      {
+        "key": "C",
+        "text": "只需口头说明"
+      },
+      {
+        "key": "D",
+        "text": "随样机寄送 U 盘即可"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "在提交申请时和固件镜像一起打包上传至测评中，或者提供下载地址",
+    "analysis": "B. 在提交申请时和固件镜像一起打包上传至测评中，或者提供下载地址"
+  },
+  {
+    "n": 41,
+    "type": "选择题",
+    "question": "某厂商进行兼容性测评，使用的是3年前的 Release 分支，关于老分支版本测评的限制是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "新分支发布后立即不支持老分支测评"
+      },
+      {
+        "key": "B",
+        "text": "新的LTS或 Release分支发布6个月后，不支持基于新产品老分支版本测评 ； 老产品（已测评过产品），在LTS或 Release分支维护周期内支持升级测评。"
+      },
+      {
+        "key": "C",
+        "text": "老分支随时都支持测评"
+      },
+      {
+        "key": "D",
+        "text": "只有 LTS 分支有限制，Release 分支无限制"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "新的LTS或 Release分支发布6个月后，不支持基于新产品老分支版本测评 ； 老产品（已测评过产品），在LTS或 Release分支维护周期内支持升级测评。",
+    "analysis": "B.新的LTS或 Release分支发布6个月后，不支持基于新产品老分支版本测评 ；\n老产品（已测评过产品），在LTS或 Release分支维护周期内支持升级测评。"
+  },
+  {
+    "n": 42,
+    "type": "选择题",
+    "question": "OpenHarmony 兼容性测评服务包括哪两部分？",
+    "options": [
+      {
+        "key": "A",
+        "text": "产品兼容性技术规范文档（PCS）与兼容性测试(XTS)"
+      },
+      {
+        "key": "B",
+        "text": "代码审计与安全测试"
+      },
+      {
+        "key": "C",
+        "text": "企业资质审核与样机检测"
+      },
+      {
+        "key": "D",
+        "text": "授权验证与证书发放"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "产品兼容性技术规范文档（PCS）与兼容性测试(XTS)",
+    "analysis": "A. 产品兼容性技术规范文档（PCS）与兼容性测试(XTS)"
+  },
+  {
+    "n": 43,
+    "type": "选择题",
+    "question": "产品兼容性规范文档（PCS）的主要作用是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "定义设备兼容性的标准，开发者必须遵循此文档规则进行设备开发"
+      },
+      {
+        "key": "B",
+        "text": "提供测试执行环境搭建工具"
+      },
+      {
+        "key": "C",
+        "text": "公示通过测评的产品"
+      },
+      {
+        "key": "D",
+        "text": "下载兼容性标识"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "定义设备兼容性的标准，开发者必须遵循此文档规则进行设备开发",
+    "analysis": "A. 定义设备兼容性的标准，开发者必须遵循此文档规则进行设备开发"
+  },
+  {
+    "n": 44,
+    "type": "选择题",
+    "question": "填写 PCS 自检表时，自检结果为 N/NA 时应如何处理？",
+    "options": [
+      {
+        "key": "A",
+        "text": "无需说明"
+      },
+      {
+        "key": "B",
+        "text": "需在 F 列备注说明原因"
+      },
+      {
+        "key": "C",
+        "text": "直接删除该行"
+      },
+      {
+        "key": "D",
+        "text": "改为 Y 即可"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "需在 F 列备注说明原因",
+    "analysis": "B. 需在 F 列备注说明原因"
+  },
+  {
+    "n": 45,
+    "type": "选择题",
+    "question": "兼容性测评申请方首次申请测试报告评审时，应签署哪些文件？",
+    "options": [
+      {
+        "key": "A",
+        "text": "《OpenHarmony兼容性协议》及《OpenHarmony兼容性平台隐私声明》"
+      },
+      {
+        "key": "B",
+        "text": "《软件著作权协议》"
+      },
+      {
+        "key": "C",
+        "text": "《硬件采购合同》"
+      },
+      {
+        "key": "D",
+        "text": "《开源许可证变更协议》"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "《OpenHarmony兼容性协议》及《OpenHarmony兼容性平台隐私声明》",
+    "analysis": "A. 《OpenHarmony兼容性协议》及《OpenHarmony兼容性平台隐私声明》"
+  },
+  {
+    "n": 46,
+    "type": "选择题",
+    "question": "兼容性测评版本要求中，如何查询某个LTS 或 Release 分支是否支持版本测评？",
+    "options": [
+      {
+        "key": "A",
+        "text": "OpenHarmony官网"
+      },
+      {
+        "key": "B",
+        "text": "兼容性测评指南"
+      },
+      {
+        "key": "C",
+        "text": "OpenHarmony产品兼容性规范文档(PCS)"
+      },
+      {
+        "key": "D",
+        "text": "以OpenHarmony兼容性平台的公告中心为准"
+      }
+    ],
+    "answerKey": "D",
+    "answerText": "以OpenHarmony兼容性平台的公告中心为准",
+    "analysis": "D.以OpenHarmony兼容性平台的公告中心为准"
+  },
+  {
+    "n": 47,
+    "type": "选择题",
+    "question": "根据文档，兼容性测试包括的套件是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "acts、acts-validator、hats、dcts、ssts"
+      },
+      {
+        "key": "B",
+        "text": "cts、gts、vts、sts"
+      },
+      {
+        "key": "C",
+        "text": "unit、ui、api、perf"
+      },
+      {
+        "key": "D",
+        "text": "kernel、driver、app、net"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "acts、acts-validator、hats、dcts、ssts",
+    "analysis": "A. acts、acts-validator、hats、dcts、ssts"
+  },
+  {
+    "n": 48,
+    "type": "选择题",
+    "question": "标准系统带屏涉及分布式兼容性测试的产品，需要使用什么辅助设备进行测试？",
+    "options": [
+      {
+        "key": "A",
+        "text": "分布式测试盒子"
+      },
+      {
+        "key": "B",
+        "text": "蓝牙键盘"
+      },
+      {
+        "key": "C",
+        "text": "外接显示器"
+      },
+      {
+        "key": "D",
+        "text": "网络交换机"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "分布式测试盒子",
+    "analysis": "A. 分布式测试盒子"
+  },
+  {
+    "n": 49,
+    "type": "选择题",
+    "question": "分布式测试盒子的借用周期为多久？",
+    "options": [
+      {
+        "key": "A",
+        "text": "30天"
+      },
+      {
+        "key": "B",
+        "text": "60天"
+      },
+      {
+        "key": "C",
+        "text": "90天"
+      },
+      {
+        "key": "D",
+        "text": "180天"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "60天",
+    "analysis": "B. 60天"
+  },
+  {
+    "n": 50,
+    "type": "选择题",
+    "question": "若 XTS 用例测试失败，以下说法正确的是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "只要有一个用例失败，测评必然不通过"
+      },
+      {
+        "key": "B",
+        "text": "可以单独进行复测，全量测试和单独复测组合通过是可以的"
+      },
+      {
+        "key": "C",
+        "text": "失败后不能申请豁免"
+      },
+      {
+        "key": "D",
+        "text": "必须重新选择新的分支测试套件"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "可以单独进行复测，全量测试和单独复测组合通过是可以的",
+    "analysis": "B. 可以单独进行复测，全量测试和单独复测组合通过是可以的"
+  },
+  {
+    "n": 51,
+    "type": "选择题",
+    "question": "测评类型为商用设备的测评产品，关于设备信息接口的要求是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "可选满足"
+      },
+      {
+        "key": "B",
+        "text": "必须满足，设备信息接口列表所有 API 接口需按实际设备信息定义并满足返回值要求"
+      },
+      {
+        "key": "C",
+        "text": "仅需满足 GetDeviceType()"
+      },
+      {
+        "key": "D",
+        "text": "由生态厂商自行填写，不要求设备侧一致"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "必须满足，设备信息接口列表所有 API 接口需按实际设备信息定义并满足返回值要求",
+    "analysis": "B. 必须满足，设备信息接口列表所有 API 接口需按实际设备信息定义并满足返回值要求"
+  },
+  {
+    "n": 52,
+    "type": "选择题",
+    "question": "查询 L1/L2 设备信息的命令是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "begetctl dump api"
+      },
+      {
+        "key": "B",
+        "text": "adb shell getprop"
+      },
+      {
+        "key": "C",
+        "text": "hdc shell dump"
+      },
+      {
+        "key": "D",
+        "text": "xts run api"
+      }
+    ],
+    "answerKey": "A",
+    "answerText": "begetctl dump api",
+    "analysis": "A. begetctl dump api"
+  },
+  {
+    "n": 53,
+    "type": "选择题",
+    "question": "兼容性测评中，标准系统类型审批周期是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "3个工作日"
+      },
+      {
+        "key": "B",
+        "text": "7个工作日"
+      },
+      {
+        "key": "C",
+        "text": "14个工作日"
+      },
+      {
+        "key": "D",
+        "text": "实时"
+      }
+    ],
+    "answerKey": "C",
+    "answerText": "14个工作日",
+    "analysis": "C. 14个工作日"
+  },
+  {
+    "n": 54,
+    "type": "选择题",
+    "question": "商用设备测评样机体积较大或成本过高时，应如何申请特殊备案处理？",
+    "options": [
+      {
+        "key": "A",
+        "text": "直接不投递即可"
+      },
+      {
+        "key": "B",
+        "text": "向兼容性工作组邮箱 compatibility@mail.openharmony.io 发送邮件申请"
+      },
+      {
+        "key": "C",
+        "text": "在兼容性平台随意填写快递单号"
+      },
+      {
+        "key": "D",
+        "text": "委托任何第三方处理"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "向兼容性工作组邮箱 compatibility@mail.openharmony.io 发送邮件申请",
+    "analysis": "B. 向兼容性工作组邮箱 compatibility@mail.openharmony.io 发送邮件申请"
+  },
+  {
+    "n": 55,
+    "type": "选择题",
+    "question": "测评结果公示的正确说法是？",
+    "options": [
+      {
+        "key": "A",
+        "text": "测评通过后必须强制公示"
+      },
+      {
+        "key": "B",
+        "text": "测评通过后伙伴可随时申请公示或者取消公示"
+      },
+      {
+        "key": "C",
+        "text": "测评结果不能在官网查看"
+      },
+      {
+        "key": "D",
+        "text": "只有未通过测评的产品才会公示"
+      }
+    ],
+    "answerKey": "B",
+    "answerText": "测评通过后伙伴可随时申请公示或者取消公示",
+    "analysis": "B. 测评通过后伙伴可随时申请公示或者取消公示"
+  },
+  {
+    "n": 56,
+    "type": "选择题",
+    "question": "测评产品申请公示或者取消公示可以在哪申请？",
+    "options": [
+      {
+        "key": "A",
+        "text": "OpenHarmony官网"
+      },
+      {
+        "key": "B",
+        "text": "OpenHarmony兼容性平台-兼容性测评"
+      },
+      {
+        "key": "C",
+        "text": "OpenHarmony官网-兼容性-测评结果"
+      },
+      {
+        "key": "D",
+        "text": "OpenHarmony兼容性平台-我的证书"
+      }
+    ],
+    "answerKey": "D",
+    "answerText": "OpenHarmony兼容性平台-我的证书",
+    "analysis": "D. OpenHarmony兼容性平台-我的证书"
+  }
+]

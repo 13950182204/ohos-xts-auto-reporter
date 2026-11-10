@@ -16,6 +16,14 @@ import {
   toHostPath,
   writeWorkbookState,
 } from './phase2_logic.mjs';
+import {
+  buildExamIndex,
+  loadExamBank,
+  parseExamAnswer,
+  parseExamStart,
+  parseExamStatus,
+  resolveExamAnswer,
+} from './exam_logic.mjs';
 
 const LOGIN_ENTRY_URL = 'https://compatibility.openharmony.cn/#/personal';
 const VERIFICATION_MARKERS = /验证码|captcha|短信验证|手机验证|安全验证|人机验证/i;
@@ -249,6 +257,88 @@ async function platformRequest(page, endpoint, options = {}) {
     throw new ApplicationError('PLATFORM_REQUEST_FAILED', `${message}${detail ? ` (${detail})` : ''} [${endpoint}, HTTP ${status}]${hint}`);
   }
   return payload.body;
+}
+
+/**
+ * 同 platformRequest，但把平台应答原样返回（考试类接口用非 200 的 code 表示业务状态，
+ * 例如 10042=24 小时内不可重复考，直接抛错会把「已考过」误判成失败）。
+ */
+async function rawPlatformRequest(page, endpoint, options = {}) {
+  const token = await page.evaluate(() => localStorage.getItem('Token') || '');
+  const headers = { language: 'zh', ...(options.headers || {}) };
+  if (token) headers['access-token'] = token;
+  const response = await page.context().request.fetch(platformUrl(page, endpoint), { ...options, headers });
+  const payload = await response.json().catch(() => null);
+  return { status: response.status(), payload };
+}
+
+/**
+ * 评测资料提交前的准入考试：平台要求「考过才能提交」，每人 24 小时一次、必须全对。
+ * canExam=false 时无法区分「今天已考过」与「被限制」，按已考过处理（真被限制时后续提交会自己报错）。
+ */
+async function ensureExamPassed(page, record) {
+  const phone = String(process.env.OH_CONTACT_PHONE || record?.contactPhone || '').trim();
+  const email = String(process.env.OH_EXAM_EMAIL || process.env.OH_USERNAME || '').trim();
+  const bank = loadExamBank();
+  const index = buildExamIndex(bank);
+  reportProgress(52, '检查考试状态', `按 ${phone || '未填手机号'} / ${email || '未填邮箱'} 查询平台考试资格。`);
+  const query = `?phone=${encodeURIComponent(phone)}&email=${encodeURIComponent(email)}`;
+  const statusRaw = await rawPlatformRequest(page, `/certification/exam/checkStatus${query}`, { method: 'GET' });
+  const status = parseExamStatus(statusRaw.payload);
+  if (!status.ok) {
+    throw new ApplicationError('EXAM_STATUS_FAILED', `查询考试状态失败：${status.message || `HTTP ${statusRaw.status}`}`, { retryable: true });
+  }
+  if (!status.canExam) {
+    reportProgress(54, '跳过考试', `平台显示当前不能考试（上次：${status.lastExamTime || '无记录'}），按已考过继续。`);
+    return { attempted: false, canExam: false, lastExamTime: status.lastExamTime };
+  }
+
+  reportProgress(52, '开始考试', '平台要求先通过准入考试，正在按题库自动作答。');
+  const startRaw = await rawPlatformRequest(page, '/certification/exam/start', {
+    method: 'POST',
+    data: { phone, email },
+  });
+  const start = parseExamStart(startRaw.payload);
+  if (!start.ok) {
+    const reason = start.code === 10042 ? '24 小时内已考过，无法重复参加' : (start.message || `HTTP ${startRaw.status}`);
+    throw new ApplicationError('EXAM_START_FAILED', `开始考试失败：${reason}`, { retryable: start.code === 10042 });
+  }
+
+  const unknown = [];
+  let answered = 0;
+  let question = start.question;
+  const total = start.total || bank.length;
+  while (question) {
+    const resolvedAnswer = resolveExamAnswer(question, index, bank);
+    if (!resolvedAnswer) unknown.push(String(question.content || '').slice(0, 40));
+    const answerKey = resolvedAnswer?.answerKey || question.options?.[0]?.key;
+    if (!answerKey) {
+      throw new ApplicationError('EXAM_ANSWER_UNKNOWN', `第 ${answered + 1} 题在题库里没有答案：${String(question.content || '').slice(0, 40)}`);
+    }
+    const answerRaw = await rawPlatformRequest(page, '/certification/exam/answer', {
+      method: 'POST',
+      data: { questionId: question.id, userAnswer: answerKey },
+    });
+    const answer = parseExamAnswer(answerRaw.payload);
+    if (!answer.ok) {
+      throw new ApplicationError('EXAM_ANSWER_FAILED', `提交第 ${answered + 1} 题失败：${answer.message || `HTTP ${answerRaw.status}`}`, { retryable: true });
+    }
+    answered += 1;
+    reportProgress(52 + Math.round((answered / total) * 4), '考试作答', `第 ${answered}/${total} 题，已答对 ${answer.correct ? answered : answered - 1} 题。`);
+    if (answer.examEnded) {
+      if (!answer.pass) {
+        throw new ApplicationError(
+          'EXAM_NOT_PASSED',
+          `考试未通过（${answer.correctCount}/${answer.total}）：${answer.resultMessage || '需要全部答对'}；平台每人 24 小时只能考一次，请明天再试。`,
+          { retryable: false, details: { correctCount: answer.correctCount, total: answer.total, unknown } },
+        );
+      }
+      reportProgress(57, '考试通过', `${answer.resultMessage || '考试通过'}（${answer.correctCount}/${answer.total}）。`);
+      return { attempted: true, passed: true, correctCount: answer.correctCount, total: answer.total, unknown };
+    }
+    question = answer.nextQuestion;
+  }
+  throw new ApplicationError('EXAM_LOOP_ENDED', `考试在 ${answered} 题后结束但没有返回结果，请稍后重试。`, { retryable: true });
 }
 
 async function findApplication(page, assessmentNumber) {
@@ -1031,6 +1121,7 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
       reportProgress(55, '保存软件定义', '正在保存软件版本、补丁和 PCID.sc。');
       await saveSoftwareStep(page, applicationId, resolved, { advanceToReport: true });
     }
+    const exam = await ensureExamPassed(page, resolved);
     const attachments = await saveAndVerifyPhase2Attachments(page, applicationId, resolved);
     const express = await saveExpressStep(page, applicationId, resolved);
     return {
@@ -1039,6 +1130,7 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
       applicationId,
       action: 'phase2-attachments-saved',
       attachments,
+      exam,
       ...(express ? { express } : {}),
     };
   }
@@ -1049,6 +1141,7 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
   // The platform creates the report relation only when the software definition advances to report upload.
   reportProgress(55, '保存软件定义', '正在保存软件版本、补丁和 PCID.sc。');
   await saveSoftwareStep(page, applicationId, resolved, { advanceToReport: true });
+  const exam = await ensureExamPassed(page, resolved);
   const attachments = await saveAndVerifyPhase2Attachments(page, applicationId, resolved);
   current = await getApplication(page, applicationId);
   const differences = softwareDifferences(current, resolved);
@@ -1063,6 +1156,7 @@ async function processRecord(page, artifacts, record, mode, workbookPath) {
     applicationId,
     action: 'phase2-save-with-report-and-mirror',
     attachments,
+    exam,
     ...(express ? { express } : {}),
   };
 }

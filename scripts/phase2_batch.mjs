@@ -48,14 +48,23 @@ function errorDetails(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function examSentence(exam) {
+  if (!exam) return '';
+  if (exam.attempted && exam.passed) return `准入考试 ${exam.correctCount}/${exam.total} 通过。`;
+  if (exam.attempted) return '准入考试未通过。';
+  return '平台显示今天已考过，本次跳过考试。';
+}
+
 function resultMessage(result) {
-  if (result.message) return result.message;
+  const exam = examSentence(result.exam);
+  if (result.message) return [result.message, exam].filter(Boolean).join(' ');
   if (Array.isArray(result.differences) && result.differences.length) {
-    return result.differences.map((difference) => `${difference.field || '字段'}：期望 ${difference.expected || '空'}，实际 ${difference.actual || '空'}`).join('；');
+    const diff = result.differences.map((difference) => `${difference.field || '字段'}：期望 ${difference.expected || '空'}，实际 ${difference.actual || '空'}`).join('；');
+    return [diff, exam].filter(Boolean).join(' ');
   }
-  if (result.status === 'saved') return '资料已保存并完成平台回读校验。';
-  if (result.status === 'skipped') return '平台已有一致的资料，未重复保存。';
-  return result.status || '未返回处理结果。';
+  if (result.status === 'saved') return ['资料已保存并完成平台回读校验。', exam].filter(Boolean).join(' ');
+  if (result.status === 'skipped') return ['平台已有一致的资料，未重复保存。', exam].filter(Boolean).join(' ');
+  return [result.status || '未返回处理结果。', exam].filter(Boolean).join(' ');
 }
 
 function emitBatchItemResult(result) {
