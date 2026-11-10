@@ -196,3 +196,29 @@ describe('security patch date format', () => {
     expect(normalizePatchDate('2026-11')).toBe('2026-11')
   })
 })
+
+describe('report archive ignores placeholder files', () => {
+  let directory = ''
+
+  beforeEach(async () => {
+    directory = await mkdtemp(path.join(os.tmpdir(), 'oh-report-ignore-'))
+    await mkdir(path.join(directory, 'report'), { recursive: true })
+  })
+
+  afterEach(async () => {
+    if (directory) await rm(directory, { recursive: true, force: true })
+  })
+
+  it('skips dotfiles and office lock files when packing report/', async () => {
+    const reportDir = path.join(directory, 'report')
+    await writeFile(path.join(reportDir, 'result.txt'), 'ok')
+    await writeFile(path.join(reportDir, '.gitkeep'), '')
+    await writeFile(path.join(reportDir, '~$lock.docx'), '')
+    const zipPath = path.join(directory, 'report.zip')
+    await packDirectoryToZip(reportDir, zipPath)
+    const names = [...readZipEntries(await readFile(zipPath)).keys()]
+    expect(names).toContain('result.txt')
+    expect(names).not.toContain('.gitkeep')
+    expect(names.some((name) => name.includes('~$'))).toBe(false)
+  })
+})

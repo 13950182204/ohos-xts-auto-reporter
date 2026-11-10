@@ -73,12 +73,21 @@ function centralHeader(entry) {
   return Buffer.concat([header, name]);
 }
 
+const IGNORED_NAMES = new Set(['thumbs.db', 'desktop.ini', '.ds_store']);
+
+/** 报告目录里常混着占位文件与 Office 锁文件，打包时一并跳过。 */
+export function isIgnoredEntry(name) {
+  const lower = String(name || '').toLowerCase();
+  return lower.startsWith('.') || lower.startsWith('~$') || IGNORED_NAMES.has(lower);
+}
+
 async function walk(root, current = '', ignore = new Set()) {
   const absolute = current ? path.join(root, current) : root;
   const entries = await fs.readdir(absolute, { withFileTypes: true });
   const listed = [];
   for (const entry of entries) {
     const relative = current ? `${current}/${entry.name}` : entry.name;
+    if (isIgnoredEntry(entry.name)) continue;
     if (ignore.has(path.resolve(path.join(root, relative)))) continue;
     if (entry.isDirectory()) {
       listed.push({ name: `${relative}/`, directory: true, source: path.join(root, relative) });
@@ -102,6 +111,7 @@ export async function newestMtimeMs(directory, { ignore = new Set() } = {}) {
       continue;
     }
     for (const entry of entries) {
+      if (isIgnoredEntry(entry.name)) continue;
       const full = path.join(current, entry.name);
       if (ignore.has(path.resolve(full))) continue;
       if (entry.isDirectory()) {
