@@ -288,24 +288,40 @@ async function ensureExamPassed(page, record, { allowStart = true } = {}) {
   if (!status.ok) {
     throw new ApplicationError('EXAM_STATUS_FAILED', `查询考试状态失败：${status.message || `HTTP ${statusRaw.status}`}`, { retryable: true });
   }
-  if (!status.canExam) {
-    reportProgress(54, '跳过考试', `平台显示当前不能考试（上次：${status.lastExamTime || '无记录'}），按已考过继续。`);
-    return { attempted: false, canExam: false, lastExamTime: status.lastExamTime };
-  }
   if (!allowStart) {
-    reportProgress(54, '考试待做', '预检模式不消耗考试名额，真正提交时会先作答。');
-    return { attempted: false, canExam: true, skippedByMode: true };
+    reportProgress(54, '考试待做', '预检模式只查资格、不消耗考试名额；真正提交时会先作答。');
+    return { attempted: false, canExam: status.canExam, skippedByMode: true, lastExamTime: status.lastExamTime };
   }
 
-  reportProgress(52, '开始考试', '平台要求先通过准入考试，正在按题库自动作答。');
-  const startRaw = await rawPlatformRequest(page, '/exam/start', {
-    method: 'POST',
-    data: { phone, email },
-  });
-  const start = parseExamStart(startRaw.payload);
-  if (!start.ok) {
-    const reason = start.code === 10042 ? '24 小时内已考过，无法重复参加' : (start.message || `HTTP ${startRaw.status}`);
-    throw new ApplicationError('EXAM_START_FAILED', `开始考试失败：${reason}`, { retryable: start.code === 10042 });
+  // canExam=false 有两种可能：24 小时内已考过，或平台此刻其实还可以考。
+  // 只用 checkStatus 会「静默跳过」，所以这里用 start 探一次：
+  //   10042 = 平台确认已考过（放行）；200 = 其实能考（那就老实考完）；其它 = 状态不明（卡住）。
+  let start;
+  if (status.canExam) {
+    reportProgress(52, '开始考试', '平台要求先通过准入考试，正在按题库自动作答。');
+    const startRaw = await rawPlatformRequest(page, '/exam/start', { method: 'POST', data: { phone, email } });
+    start = parseExamStart(startRaw.payload);
+    if (!start.ok) {
+      const reason = start.message || `HTTP ${startRaw.status}`;
+      throw new ApplicationError('EXAM_START_FAILED', `开始考试失败：${reason}`, { retryable: true });
+    }
+  } else {
+    reportProgress(53, '核对考试记录', '平台显示当前不能考试，正在用开考接口确认是不是 24 小时锁。');
+    const probeRaw = await rawPlatformRequest(page, '/exam/start', { method: 'POST', data: { phone, email } });
+    const probe = parseExamStart(probeRaw.payload);
+    if (probe.code === 10042) {
+      reportProgress(54, '考试已通过', '平台确认 24 小时内已考过，本次不重复作答，直接继续提交。');
+      return { attempted: false, canExam: false, verifiedLocked: true, lastExamTime: status.lastExamTime };
+    }
+    if (!probe.ok) {
+      const reason = probe.message || `HTTP ${probeRaw.status}`;
+      throw new ApplicationError(
+        'EXAM_STATUS_AMBIGUOUS',
+        `考试状态无法确认：checkStatus 显示不能考，start 也失败（${reason}）。请先到平台「考试」页确认，再重试。`,
+        { retryable: true },
+      );
+    }
+    start = probe;
   }
 
   const unknown = [];

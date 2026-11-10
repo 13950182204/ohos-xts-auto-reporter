@@ -227,3 +227,20 @@ describe('platform endpoint wiring', () => {
     expect(uploadCall).toBeGreaterThan(examCall)
   })
 })
+
+describe('exam gate strictness', () => {
+  const source = readFileSync(fileURLToPath(new URL('../scripts/fill_phase2.mjs', import.meta.url)), 'utf8')
+
+  it('does not silently skip when checkStatus says cannot exam', () => {
+    // canExam=false 时要用 /exam/start 探一次：10042 才算「确认已考过」，否则卡住或真考。
+    expect(source).toContain('verifiedLocked')
+    expect(source).toContain('EXAM_STATUS_AMBIGUOUS')
+    expect(source).toContain("probe.code === 10042")
+  })
+
+  it('blocks instead of continuing when the exam result is unknown', () => {
+    const ambiguous = source.indexOf('EXAM_STATUS_AMBIGUOUS')
+    const message = source.slice(ambiguous, ambiguous + 400)
+    expect(message).toContain('请先到平台')
+  })
+})
