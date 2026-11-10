@@ -96,26 +96,39 @@ flowchart TD
 
 失败原因直接写进面板，例如：登录失败、平台已有重复设备申请、镜像文件被删导致平台 500。按提示处理后重试即可，进度条会说明停在哪一步。
 
-## 目录规范
+## 提交文件结构
 
-<details>
-<summary>设备目录长这样（点开）</summary>
+一个设备目录就是一次提交的全部输入：插件从目录里认表、认图、认固件，认不出来才回落到表格里填的值。
 
+```mermaid
+flowchart LR
+    root["设备目录<br/>D:\\ohos\\XTS6.1\\DHong\\DH-76AM-HS26A"]
+
+    root --> wb["OpenHarmony兼容性申请资料.xlsx（必需）<br/>产品定义、软件定义、快递单号"]
+    root --> fw["固件包（必需）<br/>型号-8位日期.7z 或 .zip"]
+    root --> rep["report/report.zip（必需）<br/>XTS 报告；没有 zip 就自动把 report/ 打包"]
+    root --> png["外观图（必需）<br/>型号.png，纯白背景"]
+    root --> pcid["pcid.sc（标准/小型系统必需）"]
+    root --> pcs["PCS 自检表（必需）<br/>OpenHarmony设备兼容性规范*自检表_标准系统.xlsx"]
+    root --> express["OpenHarmony兼容性测试样品清单.xlsx（可选）<br/>样机寄送物品清单"]
+    root --> waiver["exemption/（可选）<br/>豁免资料"]
+
+    waiver --> acts["Acts/模块/套件.txt<br/>+ 套件-豁免材料.zip + evidence/"]
+    waiver --> validator["ActsValidator/套件/套件.txt<br/>（没有 zip 时直接传该 txt）"]
+    waiver --> reserved["Hats/ Dcts/ Ssts/<br/>结构同 Acts，已预留识别"]
 ```
-DH-76AM-HS26A/
-├─ OpenHarmony兼容性申请资料.xlsx        # 唯一要填的表（产品/软件定义、快递单号）
-├─ DH-76AM-HS26A-20261106.7z            # 固件包（.7z/.zip，文件名带日期优先）
-├─ DH-76AM-HS26A.png                    # 外观图
-├─ pcid.sc                              # PCID
-├─ OpenHarmony设备兼容性规范6.x自检表_标准系统.xlsx
-├─ OpenHarmony兼容性测试样品清单.xlsx     # 样机寄送用
-├─ exemption/                           # 豁免资料
-│  ├─ Acts/<模块>/<套件>.txt + <套件>-豁免材料.zip + evidence/
-│  └─ ActsValidator/<套件>/<套件>.txt
-└─ report/                              # XTS 报告目录（没有 zip 会自动打包）
-```
 
-</details>
+| 目录里的东西 | 喂给平台哪一步 | 缺了会怎样 |
+|---|---|---|
+| `OpenHarmony兼容性申请资料.xlsx` | 第 1–3 步：联系人、产品定义、软件定义 | 直接判失败：认不出要提交什么设备 |
+| 固件包 `*.7z` / `*.zip` | 镜像管理（第 4 步的「镜像文件」从这里选） | 预检失败；有多个就取文件名带日期最新的 |
+| `report/report.zip` | 第 4 步「XTS 报告」 | 没有 zip 会自动打包 `report/`；连 `report/` 都没有才失败 |
+| `外观图` / `pcid.sc` | 第 2、3 步随产品与软件定义上传 | 预检失败（表里不再有这两行，全靠目录） |
+| `PCS 自检表` | 第 4 步「PCS 自检表」 | 预检失败；5.x / 6.x 自动挑版本高的 |
+| `样品清单 xlsx` + 快递单号 | 第 5 步「样机寄送」 | 不填就跳第 5 步，状态停在「未提交」 |
+| `exemption/` | 豁免草稿（与主流程独立） | 不识别就不影响主流程提交 |
+
+> 目录名字里不要带顿号（、）等标点：平台上传固件时会拒绝，插件上传前也会先拦一次。
 
 ## 安装
 
