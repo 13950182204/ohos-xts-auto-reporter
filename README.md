@@ -33,7 +33,7 @@ flowchart TD
 
 ![填设备目录](docs/images/01-device-dir.png)
 
-1. 「设备目录（或批量父目录）」填设备目录，例如 `D:\ohos\XTS6.1\DHong\DH-76AM-HS26A`
+1. 「设备目录（或批量父目录）」填设备目录，例如 `D:\ohos\XTS6.1\<项目>\<设备目录>`
 2. 下面那行提示会告诉你带出了什么；没有工作簿/固件时会写清缺哪个
 3. 带出后直接点「评测资料预检」
 
@@ -98,37 +98,30 @@ flowchart TD
 
 ## 提交文件结构
 
-一个设备目录就是一次提交的全部输入：插件从目录里认表、认图、认固件，认不出来才回落到表格里填的值。
+一个设备目录就是一次提交的全部输入——表、图、固件都从目录里认，认不出来才回落到表格里填的值。
 
-```mermaid
-flowchart LR
-    root["设备目录<br/>D:\\ohos\\XTS6.1\\DHong\\DH-76AM-HS26A"]
-
-    root --> wb["OpenHarmony兼容性申请资料.xlsx（必需）<br/>产品定义、软件定义、快递单号"]
-    root --> fw["固件包（必需）<br/>型号-8位日期.7z 或 .zip"]
-    root --> rep["report/report.zip（必需）<br/>XTS 报告；没有 zip 就自动把 report/ 打包"]
-    root --> png["外观图（必需）<br/>型号.png，纯白背景"]
-    root --> pcid["pcid.sc（标准/小型系统必需）"]
-    root --> pcs["PCS 自检表（必需）<br/>OpenHarmony设备兼容性规范*自检表_标准系统.xlsx"]
-    root --> express["OpenHarmony兼容性测试样品清单.xlsx（可选）<br/>样机寄送物品清单"]
-    root --> waiver["exemption/（可选）<br/>豁免资料"]
-
-    waiver --> acts["Acts/模块/套件.txt<br/>+ 套件-豁免材料.zip + evidence/"]
-    waiver --> validator["ActsValidator/套件/套件.txt<br/>（没有 zip 时直接传该 txt）"]
-    waiver --> reserved["Hats/ Dcts/ Ssts/<br/>结构同 Acts，已预留识别"]
+```text
+D:\ohos\XTS6.1\<项目>\<设备目录>
+├─ OpenHarmony兼容性申请资料.xlsx                   # 必需 · 产品定义 / 软件定义 / 快递单号
+├─ OpenHarmony设备兼容性规范6.x自检表_标准系统.xlsx # 必需 · PCS 自检表（5.x / 6.x 自动挑新的）
+├─ <设备目录>-20261106.7z                           # 必需 · 固件包（型号-8位日期，.7z / .zip）
+├─ <设备目录>.png                                   # 必需 · 外观图（纯白背景）
+├─ pcid.sc                                          # 必需 · 标准系统 / 小型系统
+├─ OpenHarmony兼容性测试样品清单.xlsx               # 可选 · 样机寄送物品清单
+├─ report/
+│  └─ report.zip                                    # 必需 · XTS 报告；没有 zip 就自动把 report/ 打包
+└─ exemption/                                       # 可选 · 豁免资料（独立链路）
+   ├─ Acts/
+   │  └─ <模块名>/
+   │     ├─ <套件>.txt                              # 报告：失败用例 / 失败原因 / 豁免理由
+   │     ├─ <套件>-豁免材料.zip                     # 附件；没有 zip 时直接传 <套件>.txt
+   │     └─ evidence/                               # -report.txt / -rerun.log / -hilog.txt
+   ├─ ActsValidator/
+   │  └─ <套件>/<套件>.txt                          # 目录名 = 套件名，无 zip、无 evidence
+   └─ Hats/ · Dcts/ · Ssts/                         # 结构同 Acts，已预留识别
 ```
 
-| 目录里的东西 | 喂给平台哪一步 | 缺了会怎样 |
-|---|---|---|
-| `OpenHarmony兼容性申请资料.xlsx` | 第 1–3 步：联系人、产品定义、软件定义 | 直接判失败：认不出要提交什么设备 |
-| 固件包 `*.7z` / `*.zip` | 镜像管理（第 4 步的「镜像文件」从这里选） | 预检失败；有多个就取文件名带日期最新的 |
-| `report/report.zip` | 第 4 步「XTS 报告」 | 没有 zip 会自动打包 `report/`；连 `report/` 都没有才失败 |
-| `外观图` / `pcid.sc` | 第 2、3 步随产品与软件定义上传 | 预检失败（表里不再有这两行，全靠目录） |
-| `PCS 自检表` | 第 4 步「PCS 自检表」 | 预检失败；5.x / 6.x 自动挑版本高的 |
-| `样品清单 xlsx` + 快递单号 | 第 5 步「样机寄送」 | 不填就跳第 5 步，状态停在「未提交」 |
-| `exemption/` | 豁免草稿（与主流程独立） | 不识别就不影响主流程提交 |
-
-> 目录名字里不要带顿号（、）等标点：平台上传固件时会拒绝，插件上传前也会先拦一次。
+缺任何一项「必需」都会在预检阶段直接说明缺什么，不会带着残缺资料去平台上建申请；目录名里不要带顿号（、）等标点，平台上传固件时会拒绝。
 
 ## 安装
 
@@ -141,7 +134,7 @@ pnpm build
 node scripts/desktop-reinstall.mjs   # 打包并装进 desktop profile
 ```
 
-装完重启 DSH Desktop，设置 → 「XTS报告上传」即可看到卡片。批量模式把「设备目录」填成父目录（如 `D:\ohos\XTS6.1\DHong`），每个子目录一份工作簿。
+装完重启 DSH Desktop，设置 → 「XTS报告上传」即可看到卡片。批量模式把「设备目录」填成父目录（如 `D:\ohos\XTS6.1\<项目>`），每个子目录一份工作簿。
 </details>
 
 ## 更多
